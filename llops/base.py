@@ -83,49 +83,54 @@ def getArrayfireBackend():
     return arrayfire.get_active_backend()
 
 
-def getNativeDatatype(dtype_str, backend):
+def getNativeDatatype(dtype_in, backend):
     """
     A function to get the correct datatype class given a datatype label and backend
     """
+
+    # Check to see if the dtype is of numpy base class
+    if type(dtype_in) is not str:
+        if 'complex64' in dtype_in:
+            dtype_in = 'complex32'
+        elif 'complex128' in dtype_in:
+            dtype_in = 'complex64'
+        else:
+            dtype_in = str(dtype_in)
+
     if backend == 'numpy':
-        if dtype_str == 'complex32':
+        if dtype_in == 'complex32':
             return np.complex64
-        elif dtype_str == 'complex64':
+        elif dtype_in == 'complex64':
             return np.complex128
-        elif dtype_str == 'uint16':
+        elif dtype_in == 'uint16':
             return np.uint16
-        elif dtype_str in config.valid_dtypes:
-            return np.dtype(dtype_str)
+        elif dtype_in in config.valid_dtypes:
+            return np.dtype(dtype_in)
     elif backend == 'arrayfire':
-        if dtype_str == 'complex32':
+        if dtype_in == 'complex32':
             return (arrayfire.Dtype.c32)
-        elif dtype_str == 'complex64':
+        elif dtype_in == 'complex64':
             return (arrayfire.Dtype.c64)
-        elif dtype_str == 'float32':
+        elif dtype_in == 'float32':
             return (arrayfire.Dtype.f32)
-        elif dtype_str == 'float64':
+        elif dtype_in == 'float64':
             return (arrayfire.Dtype.f64)
-        elif dtype_str == 'int16':
+        elif dtype_in == 'int16':
             return (arrayfire.Dtype.s16)
-        elif dtype_str == 'uint16':
+        elif dtype_in == 'uint16':
             return (arrayfire.Dtype.u16)
-        elif dtype_str == 'int32':
+        elif dtype_in == 'int32':
             return (arrayfire.Dtype.s32)
-        elif dtype_str == 'uint32':
+        elif dtype_in == 'uint32':
             return (arrayfire.Dtype.u32)
-        elif dtype_str == 'int64':
+        elif dtype_in == 'int64':
             return (arrayfire.Dtype.s64)
-        elif dtype_str == 'uint64':
+        elif dtype_in == 'uint64':
             return (arrayfire.Dtype.u64)
         else:
             raise ValueError(
                 'Invalid datatype/backend combination (dtype=%s, backend=%s)' %
-                (dtype_str, backend))
-    else:
-        raise ValueError(
-            'Invalid datatype/backend combination (dtype=%s, backend=%s)' %
-            (dtype_str, backend))
-
+                (dtype_in, backend))
 
 def getBackend(x):
     """
@@ -135,6 +140,8 @@ def getBackend(x):
         return 'numpy'
     elif 'arrayfire' in str(x.__class__):
         return 'arrayfire'
+    elif 'torch' in str(x.__class__):
+        return 'torch'
     elif str(x.__class__) in [
             "<class 'complex'>", "<class 'float'>", "<class 'int'>"
     ]:
@@ -150,7 +157,6 @@ def getBackend(x):
     else:
         return type(x)
         # raise ValueError("Type %s is not supported!" % (str(x.__class__)))
-
 
 def getDatatype(x):
     """
@@ -189,6 +195,8 @@ def getDatatype(x):
             return 'bool'
         else:
             raise ValueError("Invalid arrayfire datatype %s" % x.dtype())
+    elif 'torch' in backend:
+        return str(x.dtype)
     elif 'Operator' in str(x.__class__):
         return x.dtype
     else:
@@ -294,6 +302,8 @@ def norm(x):
         return np.linalg.norm(x)
     elif backend == 'arrayfire':
         return arrayfire.lapack.norm(x)
+    elif backend == 'torch':
+        return x.norm(p=2)
     else:
         raise NotImplementedError('Backend %s is not implemented!' % backend)
 
@@ -309,6 +319,8 @@ def sign(x):
         s = x / arrayfire.arith.sqrt(x * x)
         s[isnan(s)] = 0
         return s
+    elif backend == 'torch':
+        return x.sign()
     else:
         raise NotImplementedError('Backend %s is not implemented!' % backend)
 
@@ -333,6 +345,8 @@ def abs(x, return_real=True):
             return arrayfire.arith.abs(x).as_type(x.dtype())
         else:
             return arrayfire.arith.abs(x)
+    elif backend == 'torch':
+        return x.abs()
     else:
         raise NotImplementedError('Backend %s is not implemented!' % backend)
 
@@ -1206,12 +1220,12 @@ def roll(x, shift, axis=None):
     backend = getBackend(x)
 
     # Deal with lists using recursion
-    if type(shift) in (list, tuple):
+    if getBackend(shift) in ('list', 'tuple', 'arrayfire', 'numpy'):
         if axis is None:
             axis = range(len(shift))
 
         for sh, ax in zip(shift, axis):
-            x = roll(x, sh, ax)
+            x = roll(x, int(sh), ax)
 
         return x
 

@@ -78,7 +78,7 @@ def _loadImage(image_label, shape, dtype=None, backend=None, **kwargs):
 def object(absorption, shape=None, phase=None, **kwargs):
     return testObject(absorption, shape, phase, **kwargs)
 
-def testObject(absorption, shape=None, phase=None, invert=False, dtype=None, backend=None, **kwargs):
+def testObject(absorption, shape=None, phase=None, invert=False, invert_phase=False, dtype=None, backend=None, **kwargs):
 
     # Load absorption image
     test_object = _loadImage(absorption, shape, dtype, backend, **kwargs)
@@ -101,12 +101,16 @@ def testObject(absorption, shape=None, phase=None, invert=False, dtype=None, bac
         # Load phase image
         phase = _loadImage(phase, shape, **kwargs)
 
+        # invert if requested
+        if invert_phase:
+            phase = 1 - phase
+
         # Normalize
         phase -= yp.min(phase)
         phase /= yp.max(phase)
 
         # Apply correct range to absorption
-        phase_max, phase_min = kwargs.get('max_value_phase', 1),  kwargs.get('min_value_phase', 1.1)
+        phase_max, phase_min = kwargs.get('max_value_phase', 0),  kwargs.get('min_value_phase', 1)
         phase *= (phase_max - phase_min)
         phase += phase_min
 
@@ -114,7 +118,6 @@ def testObject(absorption, shape=None, phase=None, invert=False, dtype=None, bac
         test_object = yp.astype(test_object, 'complex32')
         test_object *= yp.exp(1j * yp.astype(yp.real(phase), yp.getDatatype(test_object)))
 
-    print(yp.min(test_object))
     return test_object
 
 
@@ -123,7 +126,7 @@ def brain(shape=None, **kwargs):
 
 
 def ucb(shape=(512, 512), **kwargs):
-    return testObject('ucblogo', shape, phase='ucbseal', **kwargs)
+    return testObject('ucblogo', shape, phase='ucbseal', invert_phase=True, **kwargs)
 
 def california(shape=None, **kwargs):
     return testObject('california', shape, phase=None, **kwargs)

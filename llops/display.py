@@ -9,8 +9,8 @@ def addScaleBar(pixel_size_um):
     scalebar = ScaleBar(pixel_size_um, 'um')
     plt.gca().add_artist(scalebar)
 
-def listPlotFlat(list_to_plot, ax=None, fig=None, figsize=None, max_width=6,
-                 colorbar=False, clim=None, title="Item %d", **kwargs):
+def listPlotFlat(list_to_plot, labels="Item %d", ax=None, fig=None,
+                 figsize=None, max_width=6, colorbar=False, clim=None,  **kwargs):
     import matplotlib.pyplot as plt
     import math
 
@@ -35,9 +35,9 @@ def listPlotFlat(list_to_plot, ax=None, fig=None, figsize=None, max_width=6,
             figsize[1] *= row_count / aspect_ratio
 
     # Parse title
-    if title:
-        if type(title) not in (list, tuple):
-            title = [title] * len(list_to_plot)
+    if labels:
+        if type(labels) not in (list, tuple):
+            labels = [labels] * len(list_to_plot)
 
     # Generate plot
     for index, value in enumerate(list_to_plot):
@@ -60,12 +60,12 @@ def listPlotFlat(list_to_plot, ax=None, fig=None, figsize=None, max_width=6,
             plt.clim(clim)
 
         # Set title (if provided)
-        if title:
+        if labels:
 
-            if '%d' in title[index]:
-                plt.title(title[index] % index)
+            if '%d' in labels[index]:
+                plt.title(labels[index] % index)
             else:
-                plt.title(title[index])
+                plt.title(labels[index])
 
 
 def listPlotScroll(list_to_plot, fig=None, colorbar=False, **kwargs):
