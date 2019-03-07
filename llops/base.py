@@ -158,6 +158,7 @@ def getBackend(x):
         return type(x)
         # raise ValueError("Type %s is not supported!" % (str(x.__class__)))
 
+
 def getDatatype(x):
     """
     This function determines the the datatype of a given variable in terms of our
@@ -199,6 +200,8 @@ def getDatatype(x):
         return str(x.dtype)
     elif 'Operator' in str(x.__class__):
         return x.dtype
+    elif type(x) in (list, tuple):
+        return getDatatype(x[0])
     else:
         raise ValueError("Backend %s is not supported!" % (backend))
 
@@ -1029,6 +1032,8 @@ def argmax(x):
         return tuple(np.unravel_index(arrayfire.algorithm.imax(real(x.T))[1], _shape))
     elif backend == 'scalar':
         return x
+    elif backend in ('list', 'tuple'):
+        return argmax(np.asarray(x))
     else:
         raise NotImplementedError('Backend %s is not implemented!' % backend)
 
@@ -1634,8 +1639,8 @@ def changeBackend(x, new_backend=None):
         new_backend = config.default_backend
 
     # Deal with tuples and lists
-    if type(x) not in config.valid_backends:
-        x = astype(np.asarray(x), config.default_dtype)
+    if type(x) in (list, tuple):
+        x = [changeBackend(_x) for _x in x]
 
     # Get current backend
     current_backend = getBackend(x)
@@ -1650,6 +1655,9 @@ def changeBackend(x, new_backend=None):
         elif current_backend == 'arrayfire' and new_backend == 'numpy':
             """ arrayfire to numpy """
             return x.__array__()
+        elif current_backend in ("list", "tuple"):
+            """ List/tuple to any other backend."""
+            return changeBackend(np.asarray(x), new_backend)
         else:
             raise ValueError(
                 "Array with backend %s cannot be converted to new backend %s" %
@@ -1663,8 +1671,21 @@ def asbackend(x, new_backend=None):
 
 def asarray(x, dtype=None, backend=None):
     """ Wrapper class for changeBackend for convenience """
-    x = changeBackend(x, backend)
+
+    # Ensure output is complex if input is complex
+    if "complex" in getDatatype(x):
+        dtype = "complex32"
+
+    # If x is a list, convert to numpy first, then to the appropriate dtype
+    if type(x) in (list, tuple):
+        x = changeBackend(np.asarray(x), backend)
+    else:
+        x = changeBackend(x, backend)
+
+    # Convert datatype
     x = astype(x, dtype)
+
+    # Return
     return x
 
 

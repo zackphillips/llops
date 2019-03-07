@@ -1,5 +1,4 @@
-import ndoperators as ops
-# from ndoperators import Operator
+import llops.operators as ops
 import numpy as np
 import llops as yp
 from llops import real, min, max, abs, numpy_function

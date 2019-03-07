@@ -1,5 +1,5 @@
-import ndoperators as ops
-from ndoperators import Operator, L2Norm, L1Norm, FourierTransform, OperatorSum
+import llops.operators as ops
+from llops.operators import Operator, L2Norm, L1Norm, FourierTransform, OperatorSum
 import numpy as np
 from llops import fill, shape, abs, config, prod, any, all, real, sum, conj, vectorize, zeros, sqrt, roll, pad, crop
 from llops.filter import softThreshold

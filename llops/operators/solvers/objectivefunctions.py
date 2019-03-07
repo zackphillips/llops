@@ -1,6 +1,6 @@
 import numpy as np
 from llops import shape, getDatatype, getBackend, scalar, config, cast, Ft, iFt, conj, argmax, argmin, abs, dcopy
-from ndoperators import L2Norm, Vstack, PhaseRamp, Diagonalize, FourierTransform
+from llops.operators import L2Norm, Vstack, PhaseRamp, Diagonalize, FourierTransform
 
 
 def L2(A, y, reg=None):
