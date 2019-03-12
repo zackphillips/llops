@@ -30,7 +30,7 @@ def init():
 
     # Default datatype
     global default_dtype
-    default_dtype = 'complex32'
+    default_dtype = 'float32'
 
     # Defualt FFT Backend
     global default_fft_backend

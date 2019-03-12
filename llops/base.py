@@ -30,9 +30,9 @@ try:
 except ImportError:
     pass
 
-# Try to import keras - continue if import fails
+# Try to import torch - continue if import fails
 try:
-    import plaidml
+    import torch
 except ImportError:
     pass
 
@@ -106,6 +106,7 @@ def getNativeDatatype(dtype_in, backend):
             return np.uint16
         elif dtype_in in config.valid_dtypes:
             return np.dtype(dtype_in)
+
     elif backend == 'arrayfire':
         if dtype_in == 'complex32':
             return (arrayfire.Dtype.c32)
@@ -131,6 +132,32 @@ def getNativeDatatype(dtype_in, backend):
             raise ValueError(
                 'Invalid datatype/backend combination (dtype=%s, backend=%s)' %
                 (dtype_in, backend))
+    elif backend == 'torch':
+        if dtype_in == 'complex32':
+            raise ValueError('Pytorch does not support complex dtypes.')
+        elif dtype_in == 'complex64':
+            raise ValueError('Pytorch does not support complex dtypes.')
+        elif dtype_in == 'float32':
+            return torch.float32
+        elif dtype_in == 'float64':
+            return torch.float64
+        elif dtype_in == 'int16':
+            return torch.int16
+        elif dtype_in == 'uint16':
+            raise ValueError('Pytorch does not support unsigned dtypes.')
+        elif dtype_in == 'int32':
+            return torch.int32
+        elif dtype_in == 'uint32':
+            raise ValueError('Pytorch does not support unsigned dtypes.')
+        elif dtype_in == 'int64':
+            return torch.int64
+        elif dtype_in == 'uint64':
+            raise ValueError('Pytorch does not support unsigned dtypes.')
+        else:
+            raise ValueError(
+                'Invalid datatype/backend combination (dtype=%s, backend=%s)' %
+                (dtype_in, backend))
+
 
 def getBackend(x):
     """
@@ -412,22 +439,6 @@ def imag(x):
         raise NotImplementedError('Backend %s is not implemented!' % backend)
 
 
-def exp(x):
-    """
-    A generic exp operator with backend selector
-    TODO (sarah) check for numerical overflow
-    """
-    backend = getBackend(x)
-    if backend == 'scalar':
-        return np.exp(x)
-    elif backend == 'numpy':
-        return np.exp(x)
-    elif backend == 'arrayfire':
-        return arrayfire.arith.exp(x)
-    else:
-        raise NotImplementedError('Backend %s is not implemented!' % backend)
-
-
 def log(x):
     """
     Natural log with backend selector.
@@ -439,6 +450,8 @@ def log(x):
         return np.log(x)
     elif backend == 'arrayfire':
         return arrayfire.arith.log(x)
+    elif backend == 'torch':
+        return x.log()
     else:
         raise NotImplementedError('Backend %s is not implemented!' % backend)
 
@@ -454,6 +467,8 @@ def log10(x):
         return np.log10(x)
     elif backend == 'arrayfire':
         return arrayfire.arith.log10(x)
+    elif backend == 'torch':
+        return x.log10()
     else:
         raise NotImplementedError('Backend %s is not implemented!' % backend)
 
@@ -471,6 +486,8 @@ def sqrt(x):
         return np.sqrt(x)
     elif backend == 'arrayfire':
         return arrayfire.arith.sqrt(x)
+    elif backend == 'torch':
+        return x.sqrt()
     else:
         raise NotImplementedError('Backend %s is not implemented!' % backend)
 
@@ -486,6 +503,8 @@ def cos(x):
         return np.cos(x)
     elif backend == 'arrayfire':
         return arrayfire.arith.cos(x)
+    elif backend == 'torch':
+        return x.cos()
     else:
         raise NotImplementedError('Backend %s is not implemented!' % backend)
 
@@ -501,6 +520,8 @@ def sin(x):
         return np.sin(x)
     elif backend == 'arrayfire':
         return arrayfire.arith.sin(x)
+    elif backend == 'torch':
+        return x.sin()
     else:
         raise NotImplementedError('Backend %s is not implemented!' % backend)
 
@@ -516,6 +537,8 @@ def tan(x):
         return np.tan(x)
     elif backend == 'arrayfire':
         return arrayfire.arith.tan(x)
+    elif backend == 'torch':
+        return x.tan()
     else:
         raise NotImplementedError('Backend %s is not implemented!' % backend)
 
@@ -531,6 +554,8 @@ def arccos(x):
         return np.arccos(x)
     elif backend == 'arrayfire':
         return arrayfire.arith.acos(x)
+    elif backend == 'torch':
+        return x.acos()
     else:
         raise NotImplementedError('Backend %s is not implemented!' % backend)
 
@@ -546,6 +571,8 @@ def arcsin(x):
         return np.arcsin(x)
     elif backend == 'arrayfire':
         return arrayfire.arith.asin(x)
+    elif backend == 'torch':
+        return x.asin()
     else:
         raise NotImplementedError('Backend %s is not implemented!' % backend)
 
@@ -561,6 +588,8 @@ def arctan(x):
         return np.arctan(x)
     elif backend == 'arrayfire':
         return arrayfire.arith.atan(x)
+    elif backend == 'torch':
+        return x.atan()
     else:
         raise NotImplementedError('Backend %s is not implemented!' % backend)
 
@@ -595,6 +624,8 @@ def exp(x):
         return np.exp(x)
     elif backend == 'arrayfire':
         return arrayfire.arith.exp(x)
+    elif backend == 'torch':
+        return x.exp()
     else:
         raise NotImplementedError('Backend %s is not implemented!' % backend)
 
@@ -621,6 +652,8 @@ def unique(x):
         return np.unique(np.asarray(x)).tolist()
     elif backend == 'numpy':
         return np.unique(x)
+    elif backend == 'torch':
+        return x.unique()
     elif backend == 'arrayfire':
         return arrayfire.algorithm.set_unique(x)
     else:
@@ -665,6 +698,8 @@ def zeros(shape, dtype=None, backend=None):
                 0, shape[0], shape[1], shape[2], dtype=_dtype)
         else:
             raise NotImplementedError
+    elif backend == 'torch':
+        return torch.zeros(shape, dtype=_dtype)
     elif backend == 'list':
         return [0] * prod(shape)
     elif backend == 'tuple':
@@ -729,6 +764,8 @@ def ones(shape, dtype=None, backend=None):
                 1, shape[0], shape[1], shape[2], dtype=_dtype)
         else:
             raise NotImplementedError
+    elif backend == 'torch':
+        return torch.ones(shape, dtype=_dtype)
     elif backend == 'list':
         # TODO support for floats
         if 'complex' in dtype:
@@ -795,6 +832,7 @@ def randn(shape, dtype=None, backend=None):
                                 shape[2]).astype(_dtype).asfortranarray())
         else:
             raise NotImplementedError
+
     elif backend == 'arrayfire':
         if len(shape) == 1:
             return arrayfire.random.randn(shape[0], dtype=_dtype)
@@ -805,6 +843,9 @@ def randn(shape, dtype=None, backend=None):
                 shape[0], shape[1], shape[2], dtype=_dtype)
         else:
             raise NotImplementedError
+
+    elif backend == 'torch':
+        return torch.randn(shape, dtype=_dtype)
 
     else:
         raise NotImplementedError('Backend %s is not implemented!' % backend)
@@ -877,6 +918,9 @@ def randu(shape, dtype=None, backend=None):
                 shape[0], shape[1], shape[2], dtype=_dtype)
         else:
             raise NotImplementedError
+
+    elif backend == 'torch':
+        return torch.rand(shape, dtype=_dtype)
 
     else:
         raise NotImplementedError('Backend %s is not implemented!' % backend)
@@ -970,6 +1014,8 @@ def where(x):
             tuple(reversed(np.unravel_index(i, tuple(reversed(x.shape)))))
             for i in np.asarray(arrayfire.algorithm.where(x))
         ])
+    elif backend == 'torch':
+        return torch.where(x != 0, 0, 1)
     else:
         raise NotImplementedError('Backend %s is not implemented!' % backend)
 
@@ -999,6 +1045,8 @@ def max(x, axis=None):
         return x
     elif backend in ['list', 'tuple']:
         return builtins.max(x)
+    elif backend == 'torch':
+        return torch.max(x, dim=axis)
     else:
         raise NotImplementedError('Backend %s is not implemented!' % backend)
 
@@ -1008,7 +1056,7 @@ def amax(x):
     return max(x)
 
 
-def argmax(x):
+def argmax(x, axis=None):
     """
     Returns the coordinates of the global maximum of an array. Only considers
     the real part of the array.
@@ -1033,12 +1081,14 @@ def argmax(x):
     elif backend == 'scalar':
         return x
     elif backend in ('list', 'tuple'):
-        return argmax(np.asarray(x))
+        return argmax(np.asarray(x), axis=axis)
+    elif backend == 'torch':
+        return torch.argmax(x, dim=axis)
     else:
         raise NotImplementedError('Backend %s is not implemented!' % backend)
 
 
-def min(x):
+def min(x, axis=None):
     """
     Returns the minimum of an array across all dimensions.
 
@@ -1056,23 +1106,25 @@ def min(x):
     """
     backend = getBackend(x)
     if backend == 'numpy':
-        return np.amin(real(x))
+        return np.min(real(x), axis=axis)
     elif backend == 'arrayfire':
-        return scalar(arrayfire.algorithm.min(real(x)))
+        return scalar(arrayfire.algorithm.min(real(x), dim=axis))
     elif backend == 'scalar':
         return x
     elif backend in ['list', 'tuple']:
         return builtins.min(x)
+    elif backend == 'torch':
+        return torch.min(x, dim=axis)
     else:
         raise NotImplementedError('Backend %s is not implemented!' % backend)
 
 
-def amin(x):
+def amin(x, axis=None):
     """Short-hand for llops.min."""
-    return min(x)
+    return min(x, axis=axis)
 
 
-def argmin(x):
+def argmin(x, axis=None):
     """
     Returns the coordinates of the global mininum of an array. Only conisders
     the real part of the input.
@@ -1097,6 +1149,8 @@ def argmin(x):
             np.unravel_index(arrayfire.algorithm.imin(real(x.T))[1], _shape))
     elif backend == 'scalar':
         return x
+    elif backend == 'torch':
+        return torch.argmin(x, dim=axis)
     else:
         raise NotImplementedError('Backend %s is not implemented!' % backend)
 
@@ -1144,7 +1198,7 @@ def dot(lhs, rhs):
     """
     backend = getBackend(rhs)
 
-    if backend == 'numpy' or backend == 'arrayfire':
+    if backend == 'numpy' or backend == 'arrayfire' or backend == 'torch':
         return sum(lhs * rhs)
     else:
         raise NotImplementedError('Backend %s is not implemented!' % backend)
@@ -1187,6 +1241,8 @@ def flip(x, axis=None):
         for ax in axis:
             x = arrayfire.data.flip(x, ax)
         return x
+    elif backend == 'torch':
+        return torch.flip(x, dim=axis)
     else:
         raise NotImplementedError('Backend %s is not implemented!' % backend)
 
@@ -1253,6 +1309,16 @@ def roll(x, shift, axis=None):
             raise NotImplementedError
     elif backend in ('list', 'tuple'):
         return x[-shift:] + x[:-shift]
+    elif backend == 'torch':
+        if shift < 0:
+            shift = -shift
+            gap = x.index_select(axis, torch.arange(shift))
+            return torch.cat([x.index_select(axis, torch.arange(shift, x.size(axis))), gap], dim=axis)
+
+        else:
+            shift = x.size(axis) - shift
+            gap = x.index_select(axis, torch.arange(shift, x.size(axis)))
+            return torch.cat([gap, x.index_select(axis, torch.arange(shift))], dim=axis)
     else:
         raise NotImplementedError('Backend %s is not implemented!' % backend)
 
@@ -1375,6 +1441,8 @@ def transpose(x, hermitian=True):
             return x.T
     elif backend == 'arrayfire':
         return arrayfire.array.transpose(x, conj=hermitian)
+    elif backend == 'torch':
+        return x.transpose(-1,0)
     else:
         raise NotImplementedError('Backend %s is not implemented!' % backend)
 
@@ -1517,6 +1585,8 @@ def prod(x, axes=None):
             return scalar(a.as_type(x.dtype()))
         else:
             return a.as_type(x.dtype())
+    elif backend == 'scalar':
+        return x
     else:
         raise NotImplementedError('Backend %s is not implemented!' % backend)
 
@@ -1605,6 +1675,8 @@ def shape(x, ndim=None):
         return _shape
     elif backend == 'scalar':
         return (1,)
+    elif backend == 'torch':
+        return tuple(x.shape)
     elif backend in ['tuple', 'list']:
         return len(x)
     else:
@@ -1620,7 +1692,7 @@ def scalar(x):
     else:
         backend = getBackend(x)
         datatype = getDatatype(x)
-        if backend in ['numpy', 'arrayfire']:
+        if backend in ['numpy', 'arrayfire', 'torch']:
             if 'complex' in datatype:
                 return np.complex(np.asarray(x).item(0))
             else:
@@ -1652,12 +1724,21 @@ def changeBackend(x, new_backend=None):
         if current_backend == 'numpy' and new_backend == 'arrayfire':
             """ Numpy to arrayfire """
             return arrayfire.interop.np_to_af_array(x)
-        elif current_backend == 'arrayfire' and new_backend == 'numpy':
+        elif current_backend == 'numpy' and new_backend == 'torch':
+            """ Numpy to pytorch """
+            return torch.from_numpy(x)
+        elif current_backend == 'numpy' and new_backend == 'list':
+            return x.toList()
+        elif current_backend == 'numpy' and new_backend == 'tuple':
+            return tuple(x.toList())
+        elif current_backend == 'arrayfire':
             """ arrayfire to numpy """
-            return x.__array__()
+            return changeBackend(x.__array__(), new_backend)
         elif current_backend in ("list", "tuple"):
             """ List/tuple to any other backend."""
             return changeBackend(np.asarray(x), new_backend)
+        elif current_backend is 'torch':
+            return changeBackend(x.numpy(), new_backend)
         else:
             raise ValueError(
                 "Array with backend %s cannot be converted to new backend %s" %
@@ -1825,6 +1906,8 @@ def reshape(x, N, no_warnings=False):
                 arrayfire.moddims(arrayfire.transpose(x), N[2], N[1], N[0]))
             garbageCollect(backend)
             return y
+    elif backend == 'torch':
+        return x.view(N)
     else:
         raise NotImplementedError('Backend %s is not implemented!' % backend)
 
@@ -1863,6 +1946,8 @@ def squeeze(x):
                 dims.append(dims.pop(dims[dim]))
 
         return arrayfire.data.reorder(x, dims[0], dims[1], dims[2], dims[3])
+    elif backend == 'torch':
+        return torch.squeeze(x)
     else:
         raise NotImplementedError('Backend %s is not implemented!' % backend)
 
@@ -1906,6 +1991,8 @@ def vectorize(x, no_warnings=False):
         return x.ravel()
     elif backend == 'arrayfire':
         return arrayfire.data.flat(transpose(x, hermitian=False))
+    elif backend == 'torch':
+        return x.view(size(x))
     else:
         raise NotImplementedError('Backend %s is not implemented!' % backend)
 
@@ -1930,17 +2017,7 @@ def size(x):
         The number of elements in the input.
 
     """
-    backend = getBackend(x)
-    if backend == 'numpy':
-        return x.size
-    elif backend == 'arrayfire':
-        return x.elements()
-    elif backend in ('list', 'tuple'):
-        return len(x)
-    elif backend == 'scalar':
-        return 1
-    else:
-        raise NotImplementedError('Backend %s is not implemented!' % backend)
+    return prod(shape(x))
 
 
 def ndim(x):
@@ -1976,6 +2053,8 @@ def ndim(x):
         return _ndim
     elif backend == 'scalar':
         return 1
+    elif backend == 'torch':
+        return x.ndimension()
     else:
         raise NotImplementedError('Backend %s is not implemented!' % backend)
 
@@ -2532,7 +2611,7 @@ def crop(x, M, crop_start=(0, 0), y=None, out_of_bounds_placeholder=None, center
         return y
 
 
-def grid(shape, scale=1, offset=None, dtype=None, backend=None):
+def grid(shape, scale=1, offset=None, center=True, dtype=None, backend=None):
     """
     MATLAB-style meshgrid operator. Takes a shape and scale and produces a list of coordinate grids.
 
@@ -2577,6 +2656,10 @@ def grid(shape, scale=1, offset=None, dtype=None, backend=None):
             grid = (
                 (np.arange(size, dtype=dtype) - shape[0] // 2) * scale[0]
                 - offset[0]).astype(dtype_np)
+
+            if not center:
+                grid -= min(grid)
+
             return grid
 
         elif len(shape) == 2:
@@ -2586,6 +2669,11 @@ def grid(shape, scale=1, offset=None, dtype=None, backend=None):
             lin_x = (np.arange(shape[1], dtype=dtype_np) - shape[1] // 2) * scale[1] - offset[1]
             grid_y = (lin_y[:, np.newaxis] * np.ones_like(lin_x)[np.newaxis, :]).astype(dtype_np)
             grid_x = (lin_x[np.newaxis, :] * np.ones_like(lin_y)[:, np.newaxis]).astype(dtype_np)
+
+            if not center:
+                grid_y -= min(grid_y)
+                grid_x -= min(grid_x)
+
             return ((grid_y, grid_x))
 
         elif len(shape) == 3:
@@ -2595,18 +2683,33 @@ def grid(shape, scale=1, offset=None, dtype=None, backend=None):
                       scale[1] - offset[1]).astype(dtype_np)
             grid_x = ((np.arange(shape[2], dtype=dtype) - shape[2] // 2) *
                       scale[2] - offset[2]).astype(dtype_np)
+
+            if not center:
+                grid_y -= min(grid_y)
+                grid_x -= min(grid_x)
+                grid_z -= min(grid_z)
+
             return ((grid_z, grid_y, grid_x))
 
     elif backend == 'arrayfire':
         if len(shape) == 1:
             grid = arrayfire.range(shape[0]) - offset[0]
-            return ((grid))
+
+            if not center:
+                grid -= min(grid)
+
+            return grid
 
         elif len(shape) == 2:
             grid_y = (arrayfire.range(shape[0], shape[1], dim=0) -
                       shape[0] // 2) * scale[0] - offset[0]
             grid_x = (arrayfire.range(shape[0], shape[1], dim=1) -
                       shape[1] // 2) * scale[0] - offset[1]
+
+            if not center:
+                grid_y -= min(grid_y)
+                grid_x -= min(grid_x)
+
             return ((grid_y, grid_x))
 
         elif len(shape) == 3:
@@ -2616,6 +2719,12 @@ def grid(shape, scale=1, offset=None, dtype=None, backend=None):
                       shape[1] // 2) * scale[0] - offset[1]
             grid_x = (arrayfire.range(shape[0], shape[1], shape[2], dim=2) -
                       shape[2] // 2) * scale[0] - offset[2]
+
+            if not center:
+                grid_y -= min(grid_y)
+                grid_x -= min(grid_x)
+                grid_z -= min(grid_z)
+
             return ((grid_z, grid_y, grid_x))
     else:
         raise NotImplementedError('Backend %s is not implemented!' % backend)
