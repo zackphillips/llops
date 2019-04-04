@@ -414,7 +414,10 @@ def downsample(x, factor=2):
     """
 
     # Calculate new size
-    new_size = tuple([int(sh / factor) for sh in shape(x)])
+    if type(factor) in (list, tuple):
+        new_size = tuple([sh // f for (sh, f) in zip(shape(x), factor)])
+    else:
+        new_size = tuple([sh // factor for sh in shape(x)])
 
     # Return new size
     return skimage.transform.resize(x, new_size, anti_aliasing=False, mode='reflect', preserve_range=True)

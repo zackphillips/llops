@@ -3,14 +3,29 @@ from .base import abs, real, shape, ndim
 from .mem import getMemoryUsage
 
 
-def addScaleBar(pixel_size_um):
+def savefig(filename, context='publication'):
+    """Save a figure without border.
+       See https://stackoverflow.com/questions/11837979/removing-white-space-around-a-saved-image-in-matplotlib."""
+    import matplotlib.pyplot as plt
+    plt.tight_layout()
+    plt.gca().set_axis_off()
+    plt.subplots_adjust(top=1, bottom=0, right=1, left=0, hspace=0, wspace=0)
+    plt.margins(0, 0)
+    plt.gca().xaxis.set_major_locator(plt.NullLocator())
+    plt.gca().yaxis.set_major_locator(plt.NullLocator())
+    plt.savefig(filename)
+
+
+def addScaleBar(pixel_size, units='um'):
+    """Add a scale-bar to an image given a pixel size."""
     import matplotlib.pyplot as plt
     from matplotlib_scalebar.scalebar import ScaleBar
-    scalebar = ScaleBar(pixel_size_um, 'um')
+    scalebar = ScaleBar(pixel_size, units)
     plt.gca().add_artist(scalebar)
 
+
 def listPlotFlat(list_to_plot, labels="Item %d", ax=None, fig=None,
-                 figsize=None, max_width=6, colorbar=False, clim=None,  **kwargs):
+                 figsize=None, max_width=6, colorbar=False, clim=None, **kwargs):
     import matplotlib.pyplot as plt
     import math
 
@@ -26,7 +41,7 @@ def listPlotFlat(list_to_plot, labels="Item %d", ax=None, fig=None,
 
     # Calculate optimal figsize
     if fig is None:
-        fig = plt.figure()
+        fig = plt.figure(figsize=figsize)
 
         if figsize is not None:
             _figsize = list(figsize)
