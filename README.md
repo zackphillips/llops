@@ -2,7 +2,7 @@
 
 This library enables backend-independent computing using numpy and arrayfire.
 
-## Supported backend
+## Supported Backends
 
 -   `numpy`
 -   `arrayfire` (which interfaces with OpenCL and CUDA, in addition to their own CPU implementation)
