@@ -5,8 +5,3 @@ from .operators import *
 from .composite import *
 from .stack import *
 from .complex import *
-
-# Import solvers
-from . import solvers
-
-from .solvers import regularizers, objectivefunctions, denoisers
