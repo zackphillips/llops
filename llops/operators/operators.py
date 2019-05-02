@@ -1726,7 +1726,7 @@ class Flip(Operator):
 
     def _forward(self, x, y):
         x = reshape(x, self.N)
-        y[:] = reshape(flip(x, axes=self.axis), shape(y))
+        y[:] = reshape(flip(x, axis=self.axis), shape(y))
 
     def _adjoint(self, x, y):
         self._forward(x, y)
@@ -1734,7 +1734,6 @@ class Flip(Operator):
 
 class Exponential(Operator):
     """Exponential non-linear operator
-    TODO: implement this: https://en.wikipedia.org/wiki/Exponential_function
     Parameters
     ----------
     N : tuple of int, input shape

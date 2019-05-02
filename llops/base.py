@@ -2316,7 +2316,7 @@ def pad(x, M, crop_start=(0, 0), pad_value=0, y=None, center=False):
     # Get shape, backend, and datatype
     N = shape(x)
 
-    if type(M) not in (list, tuple):
+    if type(M) not in (list, tuple, np.ndarray):
         M = [M]
 
     if len(N) is not len(M):

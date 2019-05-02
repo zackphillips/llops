@@ -13,7 +13,7 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 """
 
 import numpy as np
-from .operators import Operator, Crop, FourierTransform, Diagonalize, Sum, PhaseRamp, Identity, Shift
+from .operators import Operator, Crop, FourierTransform, Diagonalize, Sum, PhaseRamp, Identity, Shift, Convolution
 from .stack import Hstack, Vstack
 
 from llops import config, abs, min, max, real, zeros_like, isnan, squeeze, sum, boundingBox, crop, where, astype, dcopy, tile, size, roll, Ft, iFt, reshape, asarray, argmax, zeros, abs, conj, ndim, getBackend, getDatatype, vec, fftshift, getNativeDatatype, changeBackend, where, shape, scalar, asbackend
@@ -194,17 +194,19 @@ def ConvolutionOld(kernel, dtype=None, backend=None, normalize=False,
     return op
 
 
-def CrossCorrelation(kernel, dtype=None, backend=None, normalize=True,
-                     mode='circular', label='XC', pad_value='mean',
-                     pad_size=None, fft_backend=None, center=False):
+def CrossCorrelation(kernel, mode='circular', dtype=None, backend=None, label='X',
+                     pad_value=0, axis=None, pad_convolution=True, pad_fft=True,
+                     invalid_support_value=1, fft_backend=None):
 
     # Flip kernel
     kernel = iFt(conj(Ft(kernel)))
 
     # Call Convolution
-    return Convolution(kernel, dtype, backend, normalize, mode, label,
-                       pad_value, pad_size, fft_backend,
-                       center)
+    return Convolution(kernel, mode=mode, dtype=dtype, backend=backend, label=label,
+                       pad_value=pad_value, axis=None, pad_convolution=pad_convolution,
+                       pad_fft=pad_fft, invalid_support_value=invalid_support_value,
+                       fft_backend=fft_backend)
+
 
 
 def Derivative(N, axis=0, dtype=None, backend=None, label=None):
