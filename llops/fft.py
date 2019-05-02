@@ -16,7 +16,7 @@ import numpy as np
 import scipy as sp
 from scipy.fftpack import next_fast_len
 from scipy.linalg import dft
-from .base import alloc, abs, flip, real, fftshift, ifftshift, getDatatype, getBackend, setByteOrder, shape, pad, crop, transpose, astype, conj, next_fast_even_number
+from .base import alloc, abs, flip, real, fftshift, ifftshift, getDatatype, getBackend, setByteOrder, shape, pad, crop, transpose, astype, conj, next_fast_even_number, where, asarray, roll
 from .config import valid_fft_backends, default_dtype, default_backend, default_fft_backend
 from .roi import boundingBox
 
@@ -429,6 +429,7 @@ def conv_functions(input_shape, kernel, mode='same', axis=None, debug=False,
     else:
         raise ValueError('Invalid mode %s.' % mode)
 
+
     # Create FFT functions
     fft, ifft = fftfuncs(conv_shape,
                          axes=axis,
@@ -451,7 +452,83 @@ def conv_functions(input_shape, kernel, mode='same', axis=None, debug=False,
     x_padded = alloc(conv_shape, dtype, backend)
     conv = alloc(conv_shape, dtype, backend)
 
-    if backend == 'numpy':
+    # Check if kernel is a delta function - if so, calculate shift
+    if not force_full and len(where(kernel)) == 1:
+
+        # Get position of delta function
+        position = asarray(where(kernel > 1e-6)[0])
+        shift = position - asarray(shape(kernel)) / 2.0
+
+        # Forward convolution function
+        def conv_forward(x, y=None):
+
+            # Allocate output
+            if y is None:
+                return_y = True
+                y = alloc(output_shape, dtype, backend)
+            else:
+                return_y = False
+
+            # Pad input
+            pad(x, conv_shape, crop_start=crop_start, pad_value=pad_value, y=x_padded)
+
+            # Perform convolution
+            conv[:] = roll(x, shift)
+
+            # Crop to output
+            crop(astype(conv, dtype), output_shape, crop_start=crop_start, y=y)
+
+            # Return output
+            if return_y:
+                return y
+
+        # Adjoint convolution function
+        def conv_adjoint(x, y=None):
+
+            # Allocate output
+            if y is None:
+                return_y = True
+                y = alloc(output_shape, dtype, backend)
+            else:
+                return_y = False
+
+            # Pad input
+            pad(x, conv_shape, crop_start=crop_start, pad_value=pad_value, y=x_padded)
+
+            # Perform convolution
+            conv[:] = roll(x, -1 * shift)
+
+            # Crop to output
+            crop(astype(conv, dtype), output_shape, crop_start=crop_start, y=y)
+
+            # Return output
+            if return_y:
+                return y
+
+        # Adjoint convolution function
+        def conv_inverse(x, y=None, regularization=0):
+
+            # Allocate output
+            if y is None:
+                return_y = True
+                y = alloc(output_shape, dtype, backend)
+            else:
+                return_y = False
+
+            # Pad input
+            pad(x, conv_shape, crop_start=crop_start, pad_value=pad_value, y=x_padded)
+
+            # Perform convolution
+            conv[:] = roll(x, -1 * shift)
+
+            # Crop to output
+            crop(astype(conv, dtype), output_shape, crop_start=crop_start, y=y)
+
+            # Return output
+            if return_y:
+                return y
+
+    elif backend == 'numpy':
 
         # Forward convolution function
         def conv_forward(x, y=None):

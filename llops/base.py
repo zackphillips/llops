@@ -1009,16 +1009,21 @@ def where(x):
         Tuple of positions in an array (one tuple for position)
 
     """
+    # Get backend
     backend = getBackend(x)
+
+    # Get precision
+    tol = precision(x)
+
     if backend == 'numpy':
-        return tuple([(i[0], i[1]) for i in np.asarray(np.where(x)).T])
+        return tuple([(i[0], i[1]) for i in np.asarray(np.where(np.abs(x) > tol)).T])
     elif backend == 'arrayfire':
         return tuple([
             tuple(reversed(np.unravel_index(i, tuple(reversed(x.shape)))))
-            for i in np.asarray(arrayfire.algorithm.where(x))
+            for i in np.asarray(arrayfire.algorithm.where(abs(x) > tol))
         ])
     elif backend == 'torch':
-        return torch.where(x != 0, 0, 1)
+        return torch.where(x.abs() > tol, 0, 1)
     else:
         raise NotImplementedError('Backend %s is not implemented!' % backend)
 
@@ -1260,7 +1265,7 @@ def flipud(x):
     return flip(x, axis=0)
 
 
-def roll(x, shift, axis=None):
+def roll(x, shift, axis=None, y=None):
     """
     Roll an array about an axis
 
