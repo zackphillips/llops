@@ -1289,7 +1289,7 @@ def roll(x, shift, axis=None):
             axis = range(len(shift))
 
         for sh, ax in zip(shift, axis):
-            x = roll(x, int(sh), ax)
+            x = roll(x, int(real(sh)), ax)
 
         return x
 
@@ -2759,6 +2759,9 @@ def assert_equality(x1, x2, metric='max', threshold=None):
 
     # Get threshold
     threshold = precision(x1) * size(x1) if threshold is None else threshold
+
+    # Vectorize both arrays to remove extra dimensions
+    x1, x2 = vec(x1), vec(x2)
 
     if metric is 'ssd':
         # Determine SSD between arrays

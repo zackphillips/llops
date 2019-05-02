@@ -2094,6 +2094,7 @@ class Convolution(Operator):
 
     def __init__(self, kernel, mode='circular', dtype=None, backend=None, label='C',
                  pad_value=0, axis=None, pad_convolution=True, pad_fft=True,
+                 inverse_regularizer=None,
                  invalid_support_value=1, fft_backend=None):
 
         # Configure backend and datatype
@@ -2137,8 +2138,7 @@ class Convolution(Operator):
                                              adjoint=self._adjoint,
                                              inverse=self._inverse,
                                              condition_number=condition_number,
-                                             # get_arguments_function=self._getArguments,
-                                             # set_arguments_function=self._setArguments,
+                                             inverse_regularizer=inverse_regularizer,
                                              label=label)
 
     def _forward(self, x, y):

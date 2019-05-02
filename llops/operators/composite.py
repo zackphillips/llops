@@ -208,7 +208,6 @@ def CrossCorrelation(kernel, mode='circular', dtype=None, backend=None, label='X
                        fft_backend=fft_backend)
 
 
-
 def Derivative(N, axis=0, dtype=None, backend=None, label=None):
 
     # Configure backend and datatype
@@ -341,27 +340,29 @@ def OperatorSum(op_list):
     return sum_op
 
 
-def Registration(x, dtype=None, backend=None, label='R', inside_operator=None,
+def Registration(array_to_register_to, dtype=None, backend=None, label='R', inside_operator=None,
                  center=False, axes=None, debug=False):
     """Registeration operator for input x and operator input."""
     # Configure backend and datatype
     backend = backend if backend is not None else config.default_backend
     dtype = dtype if dtype is not None else config.default_dtype
-    _shape = shape(x) if inside_operator is None else inside_operator.M
-    axes = axes if axes is not None else tuple(range(ndim(x)))
+    _shape = shape(array_to_register_to) if inside_operator is None else inside_operator.M
+    axes = axes if axes is not None else tuple(range(ndim(array_to_register_to)))
 
     # Create sub-operators
     PR = PhaseRamp(_shape, dtype, backend, center=center, axes=axes)
     F = FourierTransform(_shape, dtype, backend, center=center, axes=axes)
-    X = Diagonalize(x, dtype, backend, inside_operator=F * inside_operator, label='x')
+    X = Diagonalize(-1 * array_to_register_to, dtype, backend, inside_operator=F * inside_operator, label='x')
     _R = X * PR
+
+    # Compute Fourier Transform of array to register to
+    array_to_register_to_f = F * array_to_register_to
 
     # Define inverse
     def _inverse(x, y):
         """Inverse using phase correlation."""
         # Extract two arrays to correlate
-        # Note that x is assumed to already be in Fourier Domain (due to left multiplication by F below)
-        xf_1 = F * inside_operator * _R.suboperators[0].arguments['elements']
+        xf_1 = array_to_register_to_f
         xf_2 = x
 
         # Compute normalized cross-correlation
@@ -409,7 +410,7 @@ def Registration(x, dtype=None, backend=None, label='R', inside_operator=None,
 
     # Create a new operator from phase ramp
     R = Operator(_R.shape, _R.dtype, _R.backend, repr_str=repr_str, label=label,
-                 forward=_R.forward,  # Define adjoint as inverse, implies unitary
+                 forward=_R.forward,  # Don't provide adjoint, implies nonlinear
                  gradient=_R._gradient, inverse=_inverse,
                  cost=_R.cost, convex=_R.convex, smooth=True,
                  set_arguments_function=X._setArgumentsFunction,
@@ -434,9 +435,6 @@ def Registration(x, dtype=None, backend=None, label='R', inside_operator=None,
         plt.subplot(122)
         plt.imshow(yp.abs(yp.iFt(phasor)))
         plt.title('Amplitude of Object domain')
-
-    # Set condition number to be None
-    R._condition_number = None
 
     # Return operator with prepended inverse Fourier Transform
     op = F.H * R
