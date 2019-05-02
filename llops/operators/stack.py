@@ -399,11 +399,11 @@ class Dstack(Operator):
 
         # Instantiate metaclass
         super(self.__class__, self).__init__((M, N), dtype, backend, repr_latex=self._latex,
-                                             smooth=smooth, forward=self._forward,
+                                             smooth=smooth,
+                                             forward=self._forward,
                                              gradient=self._gradient,
                                              adjoint=adjoint,
                                              inverse=inverse,
-                                             invertable=invertable,
                                              stack_operators=operators,
                                              condition_number=condition_number,
                                              label=label)
@@ -476,12 +476,12 @@ class Dstack(Operator):
         # Generate gradient operator
         op_list = []
 
+        # Loop over stack operators
         for i in range(self.stack_op_count):
-            if shape(x)[1] == self.idx_in * self.stack_op_count:
-                _x = x[self.idx_in[i]:self.idx_in[i + 1], :]
-            else:
-                _x = x[:, self.idx_in[i]:self.idx_in[i + 1]]
+            # Get subarray of input
+            _x = x[self.idx_in[i]:self.idx_in[i + 1], :]
 
+            # Append gradient to list
             op_list.append(self.stack_operators[i]._gradient(inside_operator=inside_operator, x=_x))
 
             if self.normalize:
