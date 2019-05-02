@@ -228,7 +228,10 @@ def getDatatype(x):
     elif 'Operator' in str(x.__class__):
         return x.dtype
     elif type(x) in (list, tuple):
-        return getDatatype(x[0])
+        if isscalar(x[0]):
+            return getDatatype(np.asarray(x[0]))
+        else:
+            return getDatatype(x[0])
     else:
         raise ValueError("Backend %s is not supported!" % (backend))
 

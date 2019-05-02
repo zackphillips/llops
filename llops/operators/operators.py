@@ -53,7 +53,7 @@ class Operator(object):
                  get_arguments_function=None,
                  inverse_regularizer=0.0, repr_latex=None,
                  stack_operators=None, non_smooth_part=None,
-                 smooth_part=None, invertable=None):
+                 smooth_part=None):
 
         # Store operator parameters
         self.ndim = len(shape)
@@ -102,16 +102,11 @@ class Operator(object):
         self._forward = forward
         self._adjoint = adjoint
         self._gradient = gradient
-        self._inverse = inverse
         self._proximal = proximal
 
-
-        # Store condition_number
+        # Store condition_number and whether this is an upper bound
         self.condition_number = condition_number
         self.condition_number_is_upper_bound = condition_number_is_upper_bound
-
-        # Store an optional flag to force the ability to invert this matrix
-        self._invertable = invertable
 
         # If system is linear but condition number is not provided,
         # are provided, set conditon number to infinity
@@ -140,8 +135,12 @@ class Operator(object):
 
         # If the inverse is not specified but the condition number is 1,
         # the adjoint is the inverse since the operator is unitary
-        if self._inverse is None and self._adjoint is not None and self.condition_number == 1.:
-            self._inverse = self._adjointToInverse
+        if inverse is None and self._adjoint is not None and self.condition_number == 1.:
+            self._inverse = self._adjoint
+        elif inverse is not None:
+            self._inverse = inverse
+        else:
+            self._inverse = None
 
         # If adjoint is specified (function is linear) and gradient is not,
         # set the gradient operator to the adjoint times the input
@@ -535,40 +534,50 @@ class Operator(object):
         return str(self.__class__).split('.')[-1].split("'>")[0]
 
     def _isSumOfOperators(self):
+        """Returns whether a given operator is the sum of operators."""
         return len(self.suboperators) == 2 and (self.suboperators[0].type == 'Hstack' and self.suboperators[1].type == 'Vstack')
 
     def _isLinear(self):
+        """Returns whether a given operator is linear."""
         return self._adjoint is not None
 
     def _isUnitary(self):
+        """Returns whether a given operator is unitary."""
         if self.condition_number is not None:
             return (builtins.abs(self.condition_number - 1.0) < 1e-4)
         else:
             return False
 
     def _isSmooth(self):
+        """Returns whether a given operator is smooth."""
         return self._proximal is None
 
     def _isConvex(self):
+        """Returns whether a given operator is convex."""
         return self.convex or self._isLinear()
 
     def _isComposite(self):
+        """Returns whether a given operator is a composite operator (consists of several operators)."""
         return self.inner_operators is not None
 
     def _isStack(self):
+        """Returns whether a given operator is a stacked operator."""
         return self.stack_operators is not None
 
+    def isAdjointOf(self, adjoint_to_test):
+        """Returns whether a given operator is the adjoint of this operator."""
+        return self._forward == adjoint_to_test._adjoint
+
+    def isInverseOf(self, inverse_to_test):
+        """Returns whether a given operator is the inverse of this operator."""
+        return self._forward == inverse_to_test._inverse
+
     def _isInvertable(self):
-        if self._inverse is not None:
-            return True
-        elif self.condition_number:
-            return self.condition_number < np.inf
-        elif self._inverse is not None:
-            return True
-        else:
-            return False
+        """Returns whether a given operator is invertable."""
+        return self._inverse is not None
 
     def _isSquare(self):
+        """Returns whether a given operator is square."""
         return all([dim == prod(self.shape[0]) for dim in self.shape])
 
     def _isSimplyDiagonalizable(self):
@@ -1102,7 +1111,15 @@ def _ProductOperator(A, B):
         # TODO: Find a fast way of determining if A and B have same singular vectors
         condition_number_is_upper_bound = True
 
-    # Deal with latex strings and functions
+    # Parse latex functions for first (left) operator
+    if callable(A.repr_latex):
+        def repr_latex(latex_input=None):
+            return A.repr_latex(b_repr_latex(latex_input=latex_input))
+    else:
+        def repr_latex(latex_input=None):
+            return A.repr_latex + ' \\times ' + b_repr_latex(latex_input)
+
+    # Parse latex functions for second (right) operator
     if callable(B.repr_latex):
         def b_repr_latex(latex_input=None):
             return B.repr_latex(latex_input=latex_input)
@@ -1113,13 +1130,6 @@ def _ProductOperator(A, B):
             else:
                 return B.repr_latex + ' \\times ' + latex_input
 
-    if callable(A.repr_latex):
-        def repr_latex(latex_input=None):
-            return A.repr_latex(b_repr_latex(latex_input=latex_input))
-    else:
-        def repr_latex(latex_input=None):
-            return A.repr_latex + ' \\times ' + b_repr_latex(latex_input)
-
     # If B is an identity operator, return A
     if 'Identity' in str(B) and not B.composite and not explicit_identity:
         return A
@@ -1127,6 +1137,10 @@ def _ProductOperator(A, B):
     # If A is an identity operator, return B
     if 'Identity' in str(A) and not A.composite and not explicit_identity:
         return B
+
+    # Check if this operator is the inverse of the other operator - if so, return identity.
+    if A.isInverseOf(B):
+        return Identity(A.shape[0], A.dtype, A.backend)
 
     # Account for parentheses order of operations if necessary
     # This is implicitly recursive due to the '*' which creates a new
@@ -1137,12 +1151,10 @@ def _ProductOperator(A, B):
         A, B = _A, _B
 
     # If both operators have a well-defined inverse, use this
-    _inverse, _invertable = None, None
+    _inverse = None
     if A.invertable and B.invertable:
         def _inverse(x, y):
             y[:] = reshape(B.inv * A.inv * x, B.N)
-
-        _invertable = True
 
     # Check if outer-most operator is the inverse of the inner-most operator.
     # If this is the case, strip these operators.
@@ -1177,7 +1189,6 @@ def _ProductOperator(A, B):
                         condition_number=condition_number,
                         inner_operator=B,
                         outer_operator=A,
-                        invertable=_invertable,
                         cost=A.cost + B.cost,
                         repr_latex=repr_latex,  # Operator uses non-linear latex notation
                         convex=(A.convex and B.convex),
@@ -1201,7 +1212,6 @@ def _ProductOperator(A, B):
                         condition_number=condition_number,
                         inner_operator=B,
                         outer_operator=A,
-                        invertable=_invertable,
                         cost=A.cost + B.cost,
                         repr_latex=repr_latex,  # Operator uses non-linear latex notation
                         convex=(A.convex and B.convex),
@@ -1222,7 +1232,6 @@ def _ProductOperator(A, B):
                         smooth=False,
                         inner_operator=B,
                         outer_operator=A,
-                        invertable=_invertable,
                         cost=A.cost + B.cost,
                         convex=(A.convex and B.convex),
                         repr_latex=repr_latex,
@@ -1554,6 +1563,7 @@ class Diagonalize(Operator):
 
         super(self.__class__, self).__init__((N, N), dtype, backend, cost=prod(N),
                                              forward=self._forward, adjoint=self._adjoint,
+                                             inverse=self._inverse,
                                              repr_latex=self._latex,
                                              inverse_regularizer=inverse_regularizer,
                                              label=label,
@@ -1566,6 +1576,10 @@ class Diagonalize(Operator):
 
     def _adjoint(self, x, y):
         y[:] = reshape(conj(self._elements) * reshape(x, self.N), shape(y))
+
+    def _inverse(self, x, y):
+        inv_reg = super(self.__class__, self).inverse_regularizer
+        y[:] = reshape(conj(self._elements) / (yp.abs(self._elements) ** 2 + inv_reg) * reshape(x, self.N), shape(y))
 
     def _setArguments(self, arguments):
         if 'elements' in arguments:
@@ -2182,7 +2196,6 @@ class Segmentation(Operator):
                                              forward=self._forward,
                                              adjoint=self._adjoint,
                                              inverse=self._inverse,
-                                             invertable=True,
                                              repr_latex=self._latex,
                                              get_arguments_function=self._getArguments,
                                              set_arguments_function=self._setArguments,
