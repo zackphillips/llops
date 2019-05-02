@@ -29,5 +29,5 @@ setup( name             = 'llops'
      , license          = 'BSD'
      , packages         = find_packages()
      , py_modules       = ['llops']
-     , install_requires = ['numpy', 'matplotlib', 'scipy', 'scikit-image', 'imageio', 'pillow']
+     , install_requires = ['numpy', 'psutil', 'matplotlib', 'scipy', 'scikit-image', 'imageio', 'pillow']
      )
