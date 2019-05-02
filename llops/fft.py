@@ -375,7 +375,7 @@ def fftfuncs(N, axes=None, center=True, normalize=True, dtype=default_dtype,
 
 def conv_functions(input_shape, kernel, mode='same', axis=None, debug=False,
                    pad_value='edge', pad_convolution=True, fourier_input=False,
-                   pad_fft=True, fft_backend=None):
+                   pad_fft=True, fft_backend=None, force_full=False):
     """Inverse and forward convolution functions."""
 
     # Get dtype and backend
@@ -510,7 +510,10 @@ def conv_functions(input_shape, kernel, mode='same', axis=None, debug=False,
                 return_y = False
 
             # Apply regularization
-            kernel_f_inv = kernel_f_conj / (kernel_f_intensity + regularization)
+            if regularization is None:
+                kernel_f_inv = kernel_f_conj / (kernel_f_intensity)
+            else:
+                kernel_f_inv = kernel_f_conj / (kernel_f_intensity + regularization)
 
             # Pad input
             pad(x, conv_shape, crop_start=crop_start, pad_value=pad_value, y=x_padded)

@@ -2094,7 +2094,7 @@ class Convolution(Operator):
 
     def __init__(self, kernel, mode='circular', dtype=None, backend=None, label='C',
                  pad_value=0, axis=None, pad_convolution=True, pad_fft=True,
-                 inverse_regularizer=None,
+                 inverse_regularizer=None, inside_operator=None, force_full=False,
                  invalid_support_value=1, fft_backend=None):
 
         # Configure backend and datatype
@@ -2106,21 +2106,34 @@ class Convolution(Operator):
         assert mode in ('valid', 'same', 'full', 'circular'), "Convolution mode %s is not supported (Use 'valid', 'same', 'full', or 'circular')"
         self.mode = mode
 
-        # Store input shape
-        self.N = shape(kernel)
-
         # Ensure kernel has the correct datatype and backend
         kernel = yp.cast(kernel, self.dtype, self.backend)
 
+        # Store inside operator
+        self.inside_operator = inside_operator
+
+        # Apply inside operator if specified
+        if self.inside_operator:
+            self._kernel = self.inside_operator * kernel
+        else:
+            self._kernel = dcopy(kernel)
+
+        # Store input shape
+        self.N = shape(self._kernel)
+
+        # Store convolution function parameters
+        self.mode, self.axis, self.pad_value, self.pad_convolution, self.pad_fft, self.force_full = mode, axis, pad_value, pad_convolution, pad_fft, force_full
+
         # Get convolution functions
         self.conv_func, self.conv_adj_func, self.conv_inv_func, self.M = yp.fft.conv_functions(self.N,
-                                                                                               kernel,
-                                                                                               mode=mode,
-                                                                                               axis=axis,
-                                                                                               pad_value=pad_value,
-                                                                                               pad_convolution=pad_convolution,
+                                                                                               self._kernel,
+                                                                                               mode=self.mode,
+                                                                                               axis=self.axis,
+                                                                                               pad_value=self.pad_value,
+                                                                                               pad_convolution=self.pad_convolution,
                                                                                                fourier_input=False,
-                                                                                               pad_fft=pad_fft,
+                                                                                               pad_fft=self.pad_fft,
+                                                                                               force_full=self.force_full,
                                                                                                fft_backend=self.fft_backend)
 
         # Determine condition number
@@ -2137,6 +2150,8 @@ class Convolution(Operator):
                                              forward=self._forward,
                                              adjoint=self._adjoint,
                                              inverse=self._inverse,
+                                             set_arguments_function=self._setArguments,
+                                             get_arguments_function=self._getArguments,
                                              condition_number=condition_number,
                                              inverse_regularizer=inverse_regularizer,
                                              label=label)
@@ -2149,6 +2164,41 @@ class Convolution(Operator):
 
     def _inverse(self, x, y):
         self.conv_inv_func(x, y=y, regularization=super(self.__class__, self).inverse_regularizer)
+
+    def _setArguments(self, arguments):
+        if 'kernel' in arguments:
+            kernel = arguments['kernel']
+
+            # Check datatype
+            assert getDatatype(kernel) == self.dtype, "Argument of wrong datatype (should be %d)" % self.dtype
+
+            # Check size
+            if self.inside_operator is None:
+                assert size(kernel) == size(self._kernel), "Argument of wrong shape (should be %d)" % size(self._kernel)
+            else:
+                assert prod(size(kernel)) == prod(self.inside_operator.N), "Argument of wrong shape (was %s, should be %s)" % (str(shape(kernel)), str(self.inside_operator.N))
+
+            # Apply inside operator if specified
+            if self.inside_operator:
+                self._kernel = self.inside_operator * kernel
+            else:
+                self._kernel = dcopy(kernel)
+
+            # Generate new convolution functions
+            self.conv_func, self.conv_adj_func, self.conv_inv_func, self.M = yp.fft.conv_functions(self.N,
+                                                                                                   self._kernel,
+                                                                                                   mode=self.mode,
+                                                                                                   axis=self.axis,
+                                                                                                   pad_value=self.pad_value,
+                                                                                                   pad_convolution=self.pad_convolution,
+                                                                                                   fourier_input=False,
+                                                                                                   pad_fft=self.pad_fft,
+                                                                                                   force_full=self.force_full,
+                                                                                                   fft_backend=self.fft_backend)
+
+    def _getArguments(self):
+        return {'kernel': self._kernel}
+
 
 
 class Segmentation(Operator):

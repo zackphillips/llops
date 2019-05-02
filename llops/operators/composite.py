@@ -340,8 +340,8 @@ def OperatorSum(op_list):
     return sum_op
 
 
-def Registration(array_to_register_to, dtype=None, backend=None, label='R', inside_operator=None,
-                 center=False, axes=None, debug=False):
+def Registration(array_to_register_to, dtype=None, backend=None, label='R',
+                 inside_operator=None, center=False, axes=None, debug=False):
     """Registeration operator for input x and operator input."""
     # Configure backend and datatype
     backend = backend if backend is not None else config.default_backend
