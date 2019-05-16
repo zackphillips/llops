@@ -1,6 +1,5 @@
-'''
-Copyright 2017 Zack Phillips, Waller lambd
-The University of California, Berkeley
+"""
+Copyright 2019 Zachary Phillips, Waller Lab, University of California, Berkeley
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
 
@@ -11,7 +10,7 @@ Redistribution and use in source and binary forms, with or without modification,
 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
 
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-'''
+"""
 
 import imageio
 import json
@@ -25,19 +24,22 @@ import llops as yp
 simulation_shape_default = (256, 256)
 
 # Default image directory (relative path)
-test_images_directory = os.path.join(os.path.abspath(os.path.dirname(__file__)), '../resources/testimages')
+test_images_directory = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'resources/testimages')
 
 # Load image dictionary
 with open(test_images_directory + '/index.json') as f:
     _image_dict = json.load(f)
+
 
 def print_available_objects():
     for image_label in _image_dict:
         image = imageio.imread(test_images_directory + '/' + _image_dict[image_label]['filename'])
         print('%s : %d x %d (%s)' % (image_label, image.shape[0], image.shape[1], image.dtype))
 
+
 def get_available_objects():
     return _image_dict.keys()
+
 
 # Load images, process color, and resize
 def _loadImage(image_label, shape, dtype=None, backend=None, **kwargs):
@@ -54,7 +56,7 @@ def _loadImage(image_label, shape, dtype=None, backend=None, **kwargs):
         color_processing_mode = kwargs.get('color_channel', 'average')
         if color_processing_mode == 'average':
             image = np.mean(image, 2)
-        elif color_processing_mode == None:
+        elif color_processing_mode is None:
             pass
         else:
             assert type(color_processing_mode) in [np.int, int]
