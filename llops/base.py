@@ -1754,7 +1754,7 @@ def changeBackend(x, new_backend=None):
         elif current_backend == 'arrayfire':
             """ arrayfire to numpy """
             return changeBackend(x.__array__(), new_backend)
-        elif current_backend in ("list", "tuple"):
+        elif current_backend in ("list", "tuple", "scalar"):
             """ List/tuple to any other backend."""
             return changeBackend(np.asarray(x), new_backend)
         elif current_backend is 'torch':
