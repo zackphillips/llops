@@ -17,3 +17,4 @@ from . import simulation
 from . import decorators
 from . import linalg
 from . import operators
+from . import solvers

@@ -1,11 +1,25 @@
 # Low-level Operators library
+***Work in Progress - most things work, but there may be bugs!***
 
 This library enables backend-independent computing using numpy and arrayfire.
+Partial support is also included for pytorch.
+
+## Requirements
+numpy, scipy, ...
+
+## Installation
+```shell
+git clone https://www.github.com/zfphil/llops
+cd illuminate_controller
+python setup.py build
+python setup.py install
+```
 
 ## Supported Backends
 
 -   `numpy`
 -   `arrayfire` (which interfaces with OpenCL and CUDA, in addition to their own CPU implementation)
+-   `pytorch` (partial, 20%)
 
 These backend labels are used as strings to define data backends across the library.
 
@@ -92,7 +106,5 @@ brew install libpng
 ```
 Macports is preferred because is should be more robust to Apple's changes to built-in libraries, but either will work.
 
-
-# License
-
-BSD
+## License
+BSD 3-clause
