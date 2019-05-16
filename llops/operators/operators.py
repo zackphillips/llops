@@ -22,7 +22,7 @@ import pywt
 import builtins
 
 # Llops imports
-from llops import asarray, max, min, sign, gradientCheck, roll, zeros_like, fftshift, circshift, dealloc, getNativeDatatype, changeBackend, shape, scalar, rand, dcopy, size, ndim, flip, pad, crop, reshape, alloc, zeros, ones, amax, amin, norm, abs, angle, exp, conj, roll, transpose, matmul, sum, tile, precision, getDatatype, getBackend, real, vec, astype, cos, sin, isComplex, crop_roi, Roi, pad_roi
+from llops import asarray, max, min, sign, gradientCheck, roll, zeros_like, fftshift, circshift, dealloc, getNativeDatatype, makeComplex, changeBackend, shape, scalar, rand, dcopy, size, ndim, flip, pad, crop, reshape, alloc, zeros, ones, amax, amin, norm, abs, angle, exp, conj, roll, transpose, matmul, sum, tile, precision, getDatatype, getBackend, real, vec, astype, cos, sin, isComplex, crop_roi, Roi, pad_roi
 from llops.fft import fftfuncs
 from llops.filter import softThreshold
 from llops import config
@@ -305,6 +305,11 @@ class Operator(object):
                     raise ValueError('Output dtype mismatch, for {}, got {}'.format(self, getDatatype(x)))
                 if getBackend(y) != self.backend:
                     raise ValueError('Output backend mismatch, for {}, got {}'.format(self, getBackend(x)))
+                if size(y) != prod(self.shape[0]):
+                    raise ValueError('Input size mismatch, for {}, got {}'.format(self, shape(y)))
+
+                # Ensure y is correct size
+                y = reshape(y, self.M)
 
             # Call operator forward function
             self._forward(x, y)
@@ -1325,23 +1330,25 @@ class FourierTransform(Operator):
     """
 
     def __init__(self, N, dtype=None, backend=None, fft_backend=None,
-                 axes=None, center=True, normalize=False, pad=False,
-                 label='F'):
+                 axes=None, center=True, normalize=False, label='F'):
 
         # Configure backend and datatype
         backend = backend if backend is not None else config.default_backend
         dtype = dtype if dtype is not None else config.default_dtype
         fft_backend = fft_backend if fft_backend is not None else config.default_fft_backend
 
+        # Ensure dtype is complex
+        assert 'complex' in dtype, 'FourierTransform operator can only operate on complex dtypes (Got %s)' % dtype
+
         # Set parameters
-        if axes is None: axes = tuple(range(len(N)))
+        if axes is None:
+            axes = tuple(range(len(N)))
         self.N_pad = list(N)
 
         # Deal with zero-padding for prime and difficult FFTs
-        if pad:
-            for ind, d in enumerate(N):
-                if next_fast_len(d) != d:
-                    self.N_pad[ind] = next_fast_len(d)
+        for ind, d in enumerate(N):
+            if next_fast_len(d) != d:
+                self.N_pad[ind] = next_fast_len(d)
 
         self._pad = tuple(self.N_pad) != tuple(N)
 
@@ -1359,30 +1366,19 @@ class FourierTransform(Operator):
                                                self._fft_backend)
 
         super(self.__class__, self).__init__((N, N), dtype, backend,
-                                             condition_number=1.0, label=label, cost=prod(N) * math.log(prod(N)),
-                                             forward=self._forward, adjoint=self._adjoint,
+                                             condition_number=1.0,
+                                             label=label,
+                                             cost=prod(N) * math.log(prod(N)),
+                                             forward=self._forward,
+                                             adjoint=self._adjoint,
                                              get_arguments_function=self._getArguments,
                                              set_arguments_function=self._setArguments)
 
     def _forward(self, x, y):
-        x = reshape(x, self.N)  # Convert back to 2D
-
-        # # Ensure y is complex
-        # if 'complex' not in getDatatype(y):
-        #     y = y + 0j
-
-        if self._pad:
-            y[:] = reshape(crop(self.fft_fun(pad(x, self.N_pad, center=True)), self.N, center=True), shape(y))
-        else:
-            y[:] = reshape(self.fft_fun(x), shape(y))
+        self.fft_fun(x, y)
 
     def _adjoint(self, x, y):
-        x = reshape(x, self.N)  # Convert back to 2D
-
-        if self._pad:
-            y[:] = reshape(crop(self.ifft_fun(pad(x, self.N_pad, center=True)), self.N, center=True), shape(y))
-        else:
-            y[:] = reshape(self.ifft_fun(x), shape(y))
+        self.ifft_fun(x, y)
 
     def _getArguments(self):
         return {'center': self._center,
@@ -1412,6 +1408,7 @@ class FourierTransform(Operator):
                                                self._center, self._normalize,
                                                self.dtype, self.backend,
                                                self._fft_backend)
+
 
 class WaveletTransform(Operator):
     """Wavelet Transform Linear Operator

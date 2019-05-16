@@ -281,6 +281,18 @@ def setByteOrder(x, new_byte_order):
         raise NotImplementedError('Backend %s is not implemented!' % backend)
 
 
+def makeComplex(dtype_or_array):
+    """Makes a datatype or array complex-valued."""
+
+    if isarray(dtype_or_array):
+        return astype(dtype_or_array, makeComplex(getDatatype(dtype_or_array)))
+    else:
+        if dtype_or_array in ('float64', 'complex64'):
+            return 'complex64'
+        else:
+            return 'complex32'
+
+
 def precision(x, for_sum=False):
     """
     This function returns the precision of a given datatype using a comporable numpy array
@@ -1877,6 +1889,10 @@ def reshape(x, N, no_warnings=False):
     """
     A method which vectorizes an array
     """
+    # If array is already the same shape, just return
+    if tuple(N) == shape(x):
+        return x
+
     if type(N) not in [list, tuple, np.ndarray]:
         N = [N]
     elif type(N) is np.ndarray:

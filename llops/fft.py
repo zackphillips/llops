@@ -16,7 +16,7 @@ import numpy as np
 import scipy as sp
 from scipy.fftpack import next_fast_len
 from scipy.linalg import dft
-from .base import alloc, abs, flip, real, fftshift, ifftshift, getDatatype, getBackend, setByteOrder, shape, pad, crop, transpose, astype, conj, next_fast_even_number, where, asarray, roll
+from .base import alloc, abs, flip, real, fftshift, ifftshift, getDatatype, getBackend, setByteOrder, shape, pad, crop, transpose, astype, conj, next_fast_even_number, where, asarray, roll, makeComplex
 from .config import valid_fft_backends, default_dtype, default_backend, default_fft_backend
 from .roi import boundingBox
 
@@ -115,20 +115,22 @@ def fftfuncs(N, axes=None, center=True, normalize=True, dtype=default_dtype,
         axes = [axes]
 
     # Calculate scale
-    scale = np.sqrt(np.prod([N[i] for i in axes]))
+    if normalize:
+        scale = np.sqrt(np.prod([N[i] for i in axes]))
+    else:
+        scale = 1.0
 
     # Define output dtypes (these may be over-ridden by allow_c2r kwarg)
-    forward_output_dtype = dtype
-    inverse_output_dtype = dtype
+    output_dtype = makeComplex(dtype)
 
     # Ensure returned array is complex
     if 'complex' not in dtype:
         if '32' in dtype:
-            inverse_output_dtype = 'float32'
-            forward_output_dtype = 'complex32'
+            output_dtype = 'float32'
+            output_dtype = 'complex32'
         else:
-            inverse_output_dtype = 'float64'
-            forward_output_dtype = 'complex64'
+            output_dtype = 'float64'
+            output_dtype = 'complex64'
 
     # Parse FFT backend
     if fft_backend is None:
@@ -145,120 +147,84 @@ def fftfuncs(N, axes=None, center=True, normalize=True, dtype=default_dtype,
             def fft_fun(x, y=None):
                 # Allocate y if not provided
                 if y is None:
-                    return_y = True
-                    y = alloc(shape(x), forward_output_dtype, getBackend(x))
+                    if center:
+                        return sp.fftpack.fftshift(pyfftw.interfaces.numpy_fft.fft2(sp.fftpack.fftshift(x, axes=axes), axes=axes), axes=axes) / scale
+                    else:
+                        return pyfftw.interfaces.numpy_fft.fft2(x, axes=axes) / scale
                 else:
-                    return_y = False
-
-                if center:
-                    y[:] = sp.fftpack.fftshift(pyfftw.interfaces.numpy_fft.fft2(sp.fftpack.fftshift(x, axes=axes), axes=axes), axes=axes)
-                else:
-                    y[:] = pyfftw.interfaces.numpy_fft.fft2(x, axes=axes)
-
-                if normalize:
-                    y[:] /= scale
-
-                if return_y:
-                    return y
+                    if center:
+                        y[:] = sp.fftpack.fftshift(pyfftw.interfaces.numpy_fft.fft2(sp.fftpack.fftshift(x, axes=axes), axes=axes), axes=axes) / scale
+                    else:
+                        y[:] = pyfftw.interfaces.numpy_fft.fft2(x, axes=axes) / scale
 
             def ifft_fun(x, y=None):
                 # Allocate y if not provided
                 if y is None:
-                    return_y = True
-                    y = alloc(shape(x), inverse_output_dtype, getBackend(x))
+                    if center:
+                        return sp.fftpack.ifftshift(pyfftw.interfaces.numpy_fft.ifft2(sp.fftpack.ifftshift(x, axes=axes), axes=axes), axes=axes) * scale
+                    else:
+                        return pyfftw.interfaces.numpy_fft.ifft2(x, axes=axes) * scale
                 else:
-                    return_y = False
+                    if center:
+                        y[:] = sp.fftpack.ifftshift(pyfftw.interfaces.numpy_fft.ifft2(sp.fftpack.ifftshift(x, axes=axes), axes=axes), axes=axes) * scale
+                    else:
+                        y[:] = pyfftw.interfaces.numpy_fft.ifft2(x, axes=axes) * scale
 
-                if center:
-                    y[:] = astype(sp.fftpack.ifftshift(pyfftw.interfaces.numpy_fft.ifft2(sp.fftpack.ifftshift(x, axes=axes), axes=axes), axes=axes), inverse_output_dtype)
-                else:
-                    y[:] = pyfftw.interfaces.numpy_fft.ifft2(x, axes=axes)
-
-                if normalize:
-                    y[:] *= scale
-
-                if return_y:
-                    return y
-
-        # Use scipy as second option
+        # Scipy fftpack fft
         elif fft_backend == 'scipy':
             def fft_fun(x, y=None):
                 # Allocate y if not provided
                 if y is None:
-                    return_y = True
-                    y = alloc(shape(x), forward_output_dtype, getBackend(x))
+                    if center:
+                        return sp.fftpack.fftshift(sp.fftpack.fft2(sp.fftpack.fftshift(x, axes=axes), axes=axes), axes=axes) / scale
+                    else:
+                        return sp.fftpack.fft2(x) / scale
                 else:
-                    return_y = False
-
-                if center:
-                    y[:] = sp.fftpack.fftshift(sp.fftpack.fft2(sp.fftpack.fftshift(x, axes=axes), axes=axes), axes=axes)
-                else:
-                    y[:] = sp.fftpack.fft2(x)
-
-                if normalize:
-                    y /= scale
-
-                if return_y:
-                    return y
+                    if center:
+                        y[:] = sp.fftpack.fftshift(sp.fftpack.fft2(sp.fftpack.fftshift(x, axes=axes), axes=axes), axes=axes) / scale
+                    else:
+                        y[:] = sp.fftpack.fft2(x) / scale
 
             def ifft_fun(x, y=None):
                 # Allocate y if not provided
                 if y is None:
-                    return_y = True
-                    y = alloc(shape(x), inverse_output_dtype, getBackend(x))
+                    if center:
+                        return sp.fftpack.ifftshift(sp.fftpack.ifft2(sp.fftpack.ifftshift(x, axes=axes), axes=axes), axes=axes) * scale
+                    else:
+                        return sp.fftpack.ifft2(x) * scale
                 else:
-                    return_y = False
-
-                if center:
-                    y[:] = sp.fftpack.ifftshift(sp.fftpack.ifft2(sp.fftpack.ifftshift(x, axes=axes), axes=axes), axes=axes)
-                else:
-                    y[:] = sp.fftpack.ifft2(x, axes=axes)
-
-                if normalize:
-                    y[:] *= scale
-
-                if return_y:
-                    return y
+                    if center:
+                        y[:] = sp.fftpack.ifftshift(sp.fftpack.ifft2(sp.fftpack.ifftshift(x, axes=axes), axes=axes), axes=axes) * scale
+                    else:
+                        y[:] = sp.fftpack.ifft2(x) * scale
 
         # Or use numpy as a last resort
         elif fft_backend == 'numpy':
             def fft_fun(x, y=None):
                 # Allocate y if not provided
                 if y is None:
-                    return_y = True
-                    y = alloc(shape(x), forward_output_dtype, getBackend(x))
+                    if center:
+                        return np.fft.fftshift(np.fft.fft2(np.fft.fftshift(x, axes=axes), axes=axes), axes=axes) / scale
+                    else:
+                        return np.fft.fft2(x) / scale
                 else:
-                    return_y = False
-
-                if center:
-                    y[:] = np.fft.fftshift(np.fft.fft2(np.fft.fftshift(x, axes=axes), axes=axes), axes=axes)
-                else:
-                    y[:] = np.fft.fft2(x)
-
-                if normalize:
-                    y[:] /= scale
-
-                if return_y:
-                    return y
+                    if center:
+                        y[:] = np.fft.fftshift(np.fft.fft2(np.fft.fftshift(x, axes=axes), axes=axes), axes=axes) / scale
+                    else:
+                        y[:] = np.fft.fft2(x) / scale
 
             def ifft_fun(x, y=None):
                 # Allocate y if not provided
                 if y is None:
-                    return_y = True
-                    y = alloc(shape(x), inverse_output_dtype, getBackend(x))
+                    if center:
+                        return np.fft.ifftshift(np.fft.ifft2(np.fft.ifftshift(x, axes=axes), axes=axes), axes=axes) * scale
+                    else:
+                        return np.fft.ifft2(x) * scale
                 else:
-                    return_y = False
-
-                if center:
-                    y[:] = np.fft.ifftshift(np.fft.ifft2(np.fft.ifftshift(x, axes=axes), axes=axes), axes=axes)
-                else:
-                    y[:] = np.fft.ifft2(x)
-
-                if normalize:
-                    y[:] *= scale
-
-                if return_y:
-                    return y
+                    if center:
+                        y[:] = np.fft.ifftshift(np.fft.ifft2(np.fft.ifftshift(x, axes=axes), axes=axes), axes=axes) * scale
+                    else:
+                        y[:] = np.fft.ifft2(x) * scale
 
     # Arrayfire backend
     elif backend == 'arrayfire':
@@ -334,12 +300,12 @@ def fftfuncs(N, axes=None, center=True, normalize=True, dtype=default_dtype,
             # Allocate y if not provided
             if y is None and not in_place:
                 return_y = True
-                y = alloc(shape(x), forward_output_dtype, getBackend(x))
+                y = alloc(shape(x), output_dtype, getBackend(x))
             else:
                 return_y = False
 
             if center:
-                y[:] = fftshift(astype(af_fft(fftshift(x), scale=1/scale), forward_output_dtype))
+                y[:] = fftshift(astype(af_fft(fftshift(x), scale=1/scale), output_dtype))
             else:
                 y[:] = af_fft(x, scale=1/scale)
 
@@ -353,12 +319,12 @@ def fftfuncs(N, axes=None, center=True, normalize=True, dtype=default_dtype,
             # Allocate y if not provided
             if y is None and not in_place:
                 return_y = True
-                y = alloc(shape(x), inverse_output_dtype, getBackend(x))
+                y = alloc(shape(x), output_dtype, getBackend(x))
             else:
                 return_y = False
 
             if center:
-                y[:] = ifftshift(astype(af_ifft(ifftshift(x), scale=1/scale), inverse_output_dtype))
+                y[:] = ifftshift(astype(af_ifft(ifftshift(x), scale=1/scale), output_dtype))
             else:
                 y[:] = af_ifft(x, scale=1/scale)
 
