@@ -11,6 +11,7 @@ from .roi import *
 from .mem import *
 from .filter import *
 from .display import *
+from .geometry import *
 from . import display
 from . import filter
 from . import simulation
@@ -18,3 +19,4 @@ from . import decorators
 from . import linalg
 from . import operators
 from . import solvers
+from . import geometry
