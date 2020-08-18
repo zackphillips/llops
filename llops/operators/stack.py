@@ -74,7 +74,7 @@ class Hstack(Operator):
         else:
             adjoint = None
 
-        super(self.__class__, self).__init__((M, N), dtype, backend, repr_latex=self._latex,
+        super().__init__((M, N), dtype, backend, repr_latex=self._latex,
                                              smooth=smooth, forward=self._forward,
                                              gradient=self._gradient,
                                              adjoint=adjoint,
@@ -115,14 +115,14 @@ class Hstack(Operator):
         if self.normalize:
             y[:] /= self.stack_op_count
 
-    def _gradient(self, x=None, inside_operator=None):
+    def _gradient(self, x=None, inner_operator=None):
         op_list = []
 
         # Pre-compute O * x if necessary
-        Ox = x if inside_operator is None else inside_operator * x
+        Ox = x if inner_operator is None else inner_operator * x
 
         for i in range(self.stack_op_count):
-            op_list.append(self.stack_operators[i]._gradient(inside_operator=None, x=reshape(Ox, self.N)[self.idx[i]:self.idx[i + 1], :]))
+            op_list.append(self.stack_operators[i]._gradient(inner_operator=None, x=reshape(Ox, self.N)[self.idx[i]:self.idx[i + 1], :]))
             if self.normalize:
                 op_list[-1] /= self.stack_op_count
 
@@ -228,7 +228,7 @@ class Vstack(Operator):
             inverse = self._inverse
 
         # Instantiate metaclass
-        super(self.__class__, self).__init__((M, N), dtype, backend, repr_latex=self._latex,
+        super().__init__((M, N), dtype, backend, repr_latex=self._latex,
                                              forward=self._forward, adjoint=adjoint,
                                              gradient=self._gradient, inverse=inverse,
                                              stack_operators=operators,
@@ -290,11 +290,11 @@ class Vstack(Operator):
         if self.normalize:
             y /= self.stack_op_count
 
-    def _gradient(self, x=None, inside_operator=None):
+    def _gradient(self, x=None, inner_operator=None):
         # Generate gradient operator
         op_list = []
         for i in range(self.stack_op_count):
-            op_list.append(self.stack_operators[i]._gradient(inside_operator=inside_operator, x=x))
+            op_list.append(self.stack_operators[i]._gradient(inner_operator=inner_operator, x=x))
 
             if self.normalize:
                 op_list[-1] /= self.stack_op_count
@@ -398,7 +398,7 @@ class Dstack(Operator):
             inverse = self._inverse
 
         # Instantiate metaclass
-        super(self.__class__, self).__init__((M, N), dtype, backend, repr_latex=self._latex,
+        super().__init__((M, N), dtype, backend, repr_latex=self._latex,
                                              smooth=smooth,
                                              forward=self._forward,
                                              gradient=self._gradient,
@@ -472,7 +472,7 @@ class Dstack(Operator):
         if self.normalize:
             y /= self.stack_op_count
 
-    def _gradient(self, x=None, inside_operator=None):
+    def _gradient(self, x=None, inner_operator=None):
         # Generate gradient operator
         op_list = []
 
@@ -482,7 +482,7 @@ class Dstack(Operator):
             _x = x[self.idx_in[i]:self.idx_in[i + 1], :]
 
             # Append gradient to list
-            op_list.append(self.stack_operators[i]._gradient(inside_operator=inside_operator, x=_x))
+            op_list.append(self.stack_operators[i]._gradient(inner_operator=inner_operator, x=_x))
 
             if self.normalize:
                 op_list[-1] /= self.stack_op_count

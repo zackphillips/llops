@@ -47,12 +47,12 @@ def Tile(N, axes, reps, normalize=True, dtype=None, backend=None,
 def ConvolutionOld(kernel, dtype=None, backend=None, normalize=False,
                 mode='circular', label='C', pad_value='mean', pad_size=None,
                 fft_backend=None, inverse_regularizer=0,
-                center=False, inside_operator=None,
+                center=False, inner_operator=None,
                 force_full_convolution=False):
     """Convolution linear operator"""
 
     # Get temporary kernel to account for inner_operator size
-    _kernel = kernel if inside_operator is None else inside_operator * kernel
+    _kernel = kernel if inner_operator is None else inner_operator * kernel
 
     # Check number of dimensions
     N = _kernel.shape
@@ -147,7 +147,7 @@ def ConvolutionOld(kernel, dtype=None, backend=None, normalize=False,
             FFTS = Identity(N_pad, dtype=dtype, backend=backend)
 
         # Diagonalize kernel
-        K = Diagonalize(kernel, inside_operator=F * FFTS * P,
+        K = Diagonalize(kernel, inner_operator=F * FFTS * P,
                         inverse_regularizer=inverse_regularizer, label=label)
 
         # Generate composite op
@@ -341,18 +341,18 @@ def OperatorSum(op_list):
 
 
 def Registration(array_to_register_to, dtype=None, backend=None, label='R',
-                 inside_operator=None, center=False, axes=None, debug=False):
+                 inner_operator=None, center=False, axes=None, debug=False):
     """Registeration operator for input x and operator input."""
     # Configure backend and datatype
     backend = backend if backend is not None else config.default_backend
     dtype = dtype if dtype is not None else config.default_dtype
-    _shape = shape(array_to_register_to) if inside_operator is None else inside_operator.M
+    _shape = shape(array_to_register_to) if inner_operator is None else inner_operator.M
     axes = axes if axes is not None else tuple(range(ndim(array_to_register_to)))
 
     # Create sub-operators
     PR = PhaseRamp(_shape, dtype, backend, center=center, axes=axes)
     F = FourierTransform(_shape, dtype, backend, center=center, axes=axes)
-    X = Diagonalize(-1 * array_to_register_to, dtype, backend, inside_operator=F * inside_operator, label='x')
+    X = Diagonalize(-1 * array_to_register_to, dtype, backend, inner_operator=F * inner_operator, label='x')
     _R = X * PR
 
     # Compute Fourier Transform of array to register to
@@ -413,8 +413,8 @@ def Registration(array_to_register_to, dtype=None, backend=None, label='R',
                  forward=_R.forward,  # Don't provide adjoint, implies nonlinear
                  gradient=_R._gradient, inverse=_inverse,
                  cost=_R.cost, convex=_R.convex, smooth=True,
-                 set_arguments_function=X._setArgumentsFunction,
-                 get_arguments_function=X._getArgumentsFunction,
+                 set_arguments_function=X._set_argument_function,
+                 get_arguments_function=X._get_argument_function,
                  inverse_regularizer=_R.inverse_regularizer,
                  repr_latex=_R.repr_latex)
 
@@ -443,8 +443,8 @@ def Registration(array_to_register_to, dtype=None, backend=None, label='R',
     op.show_xc = show_xc
 
     # Set the set and get argument functions
-    op._setArgumentsFunction = R._setArgumentsFunction
-    op._getArgumentsFunction = R._getArgumentsFunction
+    op._setArgumentsFunction = R._set_argument_function
+    op._getArgumentsFunction = R._get_argument_function
 
     # Return result
     return op

@@ -150,17 +150,14 @@ class Operator(object):
             self._gradient = gradient
 
         # Define convexity
-        if self.linear:
-            self.convex = True
-        else:
-            self.convex = convex
+        self.convex = convex or self.linear
 
         # Define set and get arguments functions
-        self._setArgumentsFunction = set_arguments_function
-        self._getArgumentsFunction = get_arguments_function
+        self._set_argument_function = set_arguments_function
+        self._get_argument_function = get_arguments_function
 
-        if self._setArgumentsFunction is not None:
-            assert self._getArgumentsFunction, "Both set and get arguments functions must be defined!"
+        if self._set_argument_function is not None:
+            assert self._get_argument_function, "Both set and get arguments functions must be defined!"
 
         # Define smooth and non-smooth functions
         if (non_smooth_part is not None) and (smooth_part is not None):
@@ -171,10 +168,10 @@ class Operator(object):
         else:
             if self.smooth:
                 self.non_smooth_part = None
-                self.smooth_part = self._returnSelf()
+                self.smooth_part = self
             else:
                 self.smooth_part = None
-                self.non_smooth_part = self._returnSelf()
+                self.non_smooth_part = self
 
     @property
     def suboperators_with_arguments(self):
@@ -187,11 +184,10 @@ class Operator(object):
 
     @property
     def arguments(self):
-        if self._getArgumentsFunction:
-            return self._getArgumentsFunction()
+        if self._get_argument_function:
+            return (self, self._get_argument_function())
         elif self.composite and not self.is_stack:
-            # print('Operator %s is composite - please use the .suboperators property to index specific operators.' % self.repr_str)
-            return None
+            return tuple([(op, op._get_argument_function()) for op in self.suboperators])
         elif self.is_stack:
             arguments = []
             for stack_operator in self.stack_operators:
@@ -202,8 +198,8 @@ class Operator(object):
 
     @arguments.setter
     def arguments(self, new_arguments):
-        if self._setArgumentsFunction:
-            return self._setArgumentsFunction(new_arguments)
+        if self._set_argument_function:
+            return self._set_argument_function(new_arguments)
         elif self.composite:
             # print('Operator %s is composite - please use the .suboperators property to index specific operators.' % self.repr_str)
             pass
@@ -216,7 +212,7 @@ class Operator(object):
             raise ValueError('Argument not defined for operator %s' % self)
 
     # Pass-through function to convert the adjoint to a gradient
-    def _adjointToGradient(self, x=None, inside_operator=None):
+    def _adjointToGradient(self, x=None, inner_operator=None):
 
         # Strip the extra methods from the adjoint operator
         G = _GradientOperator(self.adjoint())
@@ -240,16 +236,13 @@ class Operator(object):
         G.repr_latex = repr_latex
         return G
 
-    def _returnSelf(self):
-        return self
-
-    @property
-    def nops(self):
-        return len(self.suboperators)
-
     # Pass-through function to convert the adjoint to a inverse
     def _adjointToInverse(self, x, y):
         y[:] = self.adjoint() * x
+
+    @property
+    def suboperator_count(self):
+        return len(self.suboperators)
 
     def latex(self, gradient=False):
         from IPython.display import Latex, display
@@ -338,8 +331,8 @@ class Operator(object):
                             adjoint=self._forward,
                             label=self.label,
                             cost=self.cost,
-                            get_arguments_function=self._getArgumentsFunction,
-                            set_arguments_function=self._setArgumentsFunction,
+                            get_arguments_function=self._get_argument_function,
+                            set_arguments_function=self._set_argument_function,
                             repr_latex=repr_latex,
                             condition_number=self.condition_number,
                             condition_number_is_upper_bound=self.condition_number_is_upper_bound,
@@ -390,6 +383,7 @@ class Operator(object):
                 repr_str = self.repr_str.split('^{-1}')[0]
             else:
                 repr_str = self.repr_str + '^{-1}'
+
             # Generate inverse operator
             if self.unitary:
                 # For unitary operators, regardless of composite nature
@@ -454,13 +448,13 @@ class Operator(object):
 
             # If return_op flag is specified, return an operator instead of the numeric gradient
             if return_op:
-                return self._gradient(inside_operator=self.inner_operators, x=x)
+                return self._gradient(inner_operator=self.inner_operators, x=x)
 
             # Else, return the computed gradient
             if y is None:
-                return self._gradient(inside_operator=self.inner_operators, x=x) * x
+                return self._gradient(inner_operator=self.inner_operators, x=x) * x
             else:
-                y[:] = self._gradient(inside_operator=self.inner_operators, x=x) * x
+                y[:] = self._gradient(inner_operator=self.inner_operators, x=x) * x
 
         else:
             raise NotImplementedError('The gradient function is not defined for operator %s' % self.repr_str)
@@ -534,58 +528,51 @@ class Operator(object):
         """Helper function (shirt-hand) for the proximal function"""
         return self.proximal(x, alpha=alpha)
 
+    @property
     def type(self):
         """Return the the type of the operator as a string"""
         return str(self.__class__).split('.')[-1].split("'>")[0]
 
-    def _isSumOfOperators(self):
-        """Returns whether a given operator is the sum of operators."""
-        return len(self.suboperators) == 2 and (self.suboperators[0].type == 'Hstack' and self.suboperators[1].type == 'Vstack')
-
-    def _isLinear(self):
+    @property
+    def linear(self):
         """Returns whether a given operator is linear."""
         return self._adjoint is not None
 
-    def _isUnitary(self):
+    @property
+    def unitary(self):
         """Returns whether a given operator is unitary."""
         if self.condition_number is not None:
             return (builtins.abs(self.condition_number - 1.0) < 1e-4)
         else:
             return False
 
-    def _isSmooth(self):
-        """Returns whether a given operator is smooth."""
-        return self._proximal is None
-
-    def _isConvex(self):
-        """Returns whether a given operator is convex."""
-        return self.convex or self._isLinear()
-
-    def _isComposite(self):
+    @property
+    def composite(self):
         """Returns whether a given operator is a composite operator (consists of several operators)."""
         return self.inner_operators is not None
 
-    def _isStack(self):
+    @property
+    def is_stack(self):
         """Returns whether a given operator is a stacked operator."""
         return self.stack_operators is not None
 
-    def isAdjointOf(self, adjoint_to_test):
-        """Returns whether a given operator is the adjoint of this operator."""
-        return self._forward == adjoint_to_test._adjoint
-
-    def isInverseOf(self, inverse_to_test):
-        """Returns whether a given operator is the inverse of this operator."""
-        return self._forward == inverse_to_test._inverse
-
-    def _isInvertable(self):
+    @property
+    def invertable(self):
         """Returns whether a given operator is invertable."""
         return self._inverse is not None
 
-    def _isSquare(self):
+    @property
+    def square(self):
         """Returns whether a given operator is square."""
         return all([dim == prod(self.shape[0]) for dim in self.shape])
 
-    def _isSimplyDiagonalizable(self):
+    @property
+    def is_sum_of_operators(self):
+        """Returns whether a given operator is the sum of operators."""
+        return len(self.suboperators) == 2 and (self.suboperators[0].type == 'Hstack' and self.suboperators[1].type == 'Vstack')
+
+    @property
+    def simply_diagonalizable(self):
         """
         The goal of this function is to determine whether all sub-operators but
         one are unitary, and that the one non-unitary function has a condition
@@ -604,18 +591,17 @@ class Operator(object):
             # Check if there is one (or zero) non-unitary operators
             return non_unitary_operator_count <= 1
 
+    def is_adjoint_of(self, adjoint_to_test):
+        """Returns whether a given operator is the adjoint of this operator."""
+        return self._forward == adjoint_to_test._adjoint
+
+    def is_inverse_of(self, inverse_to_test):
+        """Returns whether a given operator is the inverse of this operator."""
+        return self._forward == inverse_to_test._inverse
+
     # Short-hand property names
     H = property(adjoint)
     inv = property(inverse)
-    linear = property(_isLinear)
-    unitary = property(_isUnitary)
-    type = property(type)
-    invertable = property(_isInvertable)
-    simply_diagonalizable = property(_isSimplyDiagonalizable)
-    composite = property(_isComposite)
-    square = property(_isSquare)
-    sum = property(_isSumOfOperators)
-    is_stack = property(_isStack)
 
     #
     # def asFullMatrix(self, force=False):
@@ -715,68 +701,12 @@ class Operator(object):
         else:
             return _VectorSumOperator(self, -x, subtract_str=True)
 
+    def __hash__(self):
+        return hash((self.label, self.repr_str, self.dtype, self.backend, str(self.arguments)))
+
     def __eq__(self, other):
         """Override the default Equals behavior"""
-
-        # Deal with the case that other is None
-        if other is None:
-            return False
-
-        # Ensure operators are of the same class
-        if not self.repr_str.split('.H')[0] == other.repr_str.split('.H')[0]:
-            return False
-
-        # Ensure these are the same size
-        if not (self.M == other.M and self.N == other.N):
-            return False
-
-        # Check label
-        if not self.label == other.label:
-            return False
-
-        # Ensure dtype and backend are the same
-        if not self.dtype == other.dtype and self.backend == other.backend:
-            return False
-
-        # Ensure all argumentss are the same
-        if self.arguments is not None and other.arguments is not None:
-
-            # Check if we have a list of arguments (only used for stack operators)
-            if type(self.arguments) in (list, tuple):
-                assert self.is_stack and other.is_stack, 'Arguments with lists should only be used for stack operators'
-
-                # Check that the number of arguments is the same
-                if not len(self.arguments) == len(other.arguments):
-                    return False
-
-                # TODO: Compare arguments
-
-            else:
-
-                # Check that the number of arguments is the same
-                if not len(self.arguments) == len(other.arguments):
-                    return False
-
-                # Check names
-                if not all([arg == other_arg for (arg, other_arg) in zip(self.arguments, other.arguments)]):
-                    return False
-
-                # Check argument values
-                for argument_label in self.arguments:
-                    if yp.isarray(self.arguments[argument_label]):
-                        # Check shape
-                        if not shape(self.arguments[argument_label]) == shape(other.arguments[argument_label]):
-                            return False
-
-                        # Check values
-                        if not yp.sum(yp.abs(self.arguments[argument_label] - other.arguments[argument_label])) < 1e-3:
-                            return False
-                    else:
-                        if not self.arguments[argument_label] == other.arguments[argument_label]:
-                            return False
-
-        # If we've passed all tests, return True
-        return True
+        return (hash(self) == hash(other))
 
     def __repr__(self):
         M, N = self.shape
@@ -814,8 +744,8 @@ def _ScaledOperator(A, a):
                         repr_latex=repr_latex,
                         inner_operator=A.inner_operators,
                         condition_number=A.condition_number,
-                        set_arguments_function=A._setArgumentsFunction,
-                        get_arguments_function=A._getArgumentsFunction,
+                        set_arguments_function=A._set_argument_function,
+                        get_arguments_function=A._get_argument_function,
                         cost=A.cost,
                         convex=True,
                         smooth=A.smooth,
@@ -825,8 +755,8 @@ def _ScaledOperator(A, a):
     elif A._gradient is not None:
         """Define gradient only (adjoint is undefined)"""
 
-        def _gradient(x=None, inside_operator=None):
-            return a.conjugate() * A._gradient(x=x, inside_operator=inside_operator)
+        def _gradient(x=None, inner_operator=None):
+            return a.conjugate() * A._gradient(x=x, inner_operator=inner_operator)
 
         return Operator(shape, dtype, backend,
                         forward=_forward,
@@ -1018,11 +948,11 @@ class VectorSum(Operator):
         self._gradient_op = _GradientOperator(Identity(shape(vector), dtype=getDatatype(vector), backend=getBackend(vector)))
 
         # Instantiate metaclass
-        super(self.__class__, self).__init__((sz, sz), dtype, backend,
+        super().__init__((sz, sz), dtype, backend,
                                              forward=self._forward, adjoint=self._adjoint, gradient=self._gradient, label=label,
                                              condition_number=1., repr_latex=self._latex,
-                                             set_arguments_function=self._setArguments,
-                                             get_arguments_function=self._getArguments)
+                                             set_arguments_function=self._set_argument,
+                                             get_arguments_function=self._get_argument)
 
     def _forward(self, x, y):
         y[:] = reshape(reshape(x, shape(self.vector)) + self.vector, shape(y))
@@ -1030,7 +960,7 @@ class VectorSum(Operator):
     def _adjoint(self, x, y):
         y[:] = reshape(x, shape(y))
 
-    def _gradient(self, x=None, inside_operator=None):
+    def _gradient(self, x=None, inner_operator=None):
         return self._gradient_op
 
     def _latex(self, latex_input=None):
@@ -1042,18 +972,17 @@ class VectorSum(Operator):
         else:
             return "\\vec{" + self.label + "}"
 
-    def _setArguments(self, arguments):
-        if 'vector' in arguments:
-            vector = arguments['vector']
+    def _set_argument(self, argument):
 
-            # Check parameters of vector
-            assert size(vector) == size(self.vector), "Argument of wrong shape (should be %d)" % size(self.vector)
-            assert getDatatype(vector) == getDatatype(self.vector), "Argument of wrong dtype (should be %s)" % getDatatype(self.vector)
-            assert getBackend(vector) == getBackend(self.vector), "Argument of wrong backend (should be %s)" % getBackend(self.vector)
+        # Check parameters of vector
+        assert size(arguments) == size(self.arguments), "Argument of wrong shape (should be %d)" % size(self.vector)
+        assert getDatatype(arguments) == getDatatype(self.vector), "Argument of wrong dtype (should be %s)" % getDatatype(self.vector)
+        assert getBackend(arguments) == getBackend(self.vector), "Argument of wrong backend (should be %s)" % getBackend(self.vector)
 
-            self.vector = vector
+        # Assugb
+        self.vector = arguments
 
-    def _getArguments(self):
+    def _get_argument(self):
         return {'vector': self.vector}
 
 
@@ -1144,7 +1073,7 @@ def _ProductOperator(A, B):
         return B
 
     # Check if this operator is the inverse of the other operator - if so, return identity.
-    if A.isInverseOf(B):
+    if A.is_inverse_of(B):
         return Identity(A.shape[0], A.dtype, A.backend)
 
     # Account for parentheses order of operations if necessary
@@ -1183,8 +1112,8 @@ def _ProductOperator(A, B):
                 dealloc(tmp)
 
         # Also define the gradient
-        def _gradient(x=None, inside_operator=None):
-            return B._gradient(inside_operator=None, x=x) * A._gradient(inside_operator=B, x=x)
+        def _gradient(x=None, inner_operator=None):
+            return B._gradient(inner_operator=None, x=x) * A._gradient(inner_operator=B, x=x)
 
         return Operator(_shape, dtype, backend,
                         forward=_forward,
@@ -1207,8 +1136,8 @@ def _ProductOperator(A, B):
         # the standard order of operations, so the items in parentheses will be COMPLETLY processed first. This ordering
         # messes up the recursion order for the associative processing. To fix this, we use a slightly different gradient
 
-        def _gradient(x=None, inside_operator=None):
-            return B._gradient(inside_operator=None, x=x) * A._gradient(inside_operator=B, x=x)
+        def _gradient(x=None, inner_operator=None):
+            return B._gradient(inner_operator=None, x=x) * A._gradient(inner_operator=B, x=x)
 
         return Operator(_shape, dtype, backend,
                         forward=_forward,
@@ -1268,7 +1197,7 @@ class Identity(Operator):
         # Configure backend and datatype
         backend = backend if backend is not None else config.default_backend
         dtype = dtype if dtype is not None else config.default_dtype
-        super(self.__class__, self).__init__((N, N), dtype, backend,
+        super().__init__((N, N), dtype, backend,
                                              forward=self._forward, adjoint=self._adjoint,
                                              condition_number=1., label=label)
 
@@ -1298,7 +1227,7 @@ class MatrixMultiply(Operator):
         self.A = astype(A, dtype)
         self.AH = transpose(self.A, hermitian=True)
 
-        super(self.__class__, self).__init__(((shape(A)[0], 1), [shape(A)[1], 1]), dtype, backend,
+        super().__init__(((shape(A)[0], 1), [shape(A)[1], 1]), dtype, backend,
                                              repr_latex=self._latex, label=label, cost=prod(A.shape) ** 2,
                                              forward=self._forward, adjoint=self._adjoint)
 
@@ -1365,49 +1294,18 @@ class FourierTransform(Operator):
                                                dtype, backend,
                                                self._fft_backend)
 
-        super(self.__class__, self).__init__((N, N), dtype, backend,
+        super().__init__((N, N), dtype, backend,
                                              condition_number=1.0,
                                              label=label,
                                              cost=prod(N) * math.log(prod(N)),
                                              forward=self._forward,
-                                             adjoint=self._adjoint,
-                                             get_arguments_function=self._getArguments,
-                                             set_arguments_function=self._setArguments)
+                                             adjoint=self._adjoint)
 
     def _forward(self, x, y):
         self.fft_fun(x, y)
 
     def _adjoint(self, x, y):
         self.ifft_fun(x, y)
-
-    def _getArguments(self):
-        return {'center': self._center,
-                'normalize': self._normalize,
-                'fft_backend': self._fft_backend,
-                'axes': self._axes,
-                'pad': self._pad}
-
-    def _setArguments(self, new_arguments):
-        if 'center' in new_arguments:
-            self._center = new_arguments['center']
-
-        if 'normalize' in new_arguments:
-            self._normalize = new_arguments['normalize']
-
-        if 'fft_backend' in new_arguments:
-            self._fft_backend = new_arguments['fft_backend']
-
-        if 'axes' in new_arguments:
-            self._axes = new_arguments['axes']
-
-        if 'pad' in new_arguments:
-            self._pad = new_arguments['pad']
-
-        # Create new fft functions
-        self.fft_fun, self.ifft_fun = fftfuncs(self.N_pad, self._axes,
-                                               self._center, self._normalize,
-                                               self.dtype, self.backend,
-                                               self._fft_backend)
 
 
 class WaveletTransform(Operator):
@@ -1460,7 +1358,7 @@ class WaveletTransform(Operator):
             shape[0] = coeffs_2d.shape
             print('WARNING: Wavelet Transform output cannot be tightly packed, reshaping from (%s) to (%s)' % (self.N, coeffs_2d.shape))
 
-        super(self.__class__, self).__init__(shape, dtype, backend, cost=prod(self.N),
+        super().__init__(shape, dtype, backend, cost=prod(self.N),
                                              condition_number=1.0, label=label,
                                              forward=self._forward, adjoint=self._adjoint)
 
@@ -1521,7 +1419,7 @@ class Diagonalize(Operator):
     """
 
     def __init__(self, mult, dtype=None, backend=None, label='d',
-                 inverse_regularizer=0.0, inside_operator=None, **kwargs):
+                 inverse_regularizer=0.0, inner_operator=None, **kwargs):
 
         # Configure backend and datatype
         backend = backend if backend is not None else getBackend(mult)
@@ -1534,77 +1432,75 @@ class Diagonalize(Operator):
         self.label = label
 
         # Store inside operator if one is defined
-        self.inside_operator = inside_operator
+        self.inner_operator = inner_operator
 
         # Use non-exposed keyword shallow to indicate whether we should perform a deep copy
         # We would NOT want to perform a deep copy for operations inside gradients, for example.
         if kwargs.get('shallow', False):
-            elements = mult
+            vector = mult
         else:
-            elements = dcopy(mult)
+            vector = dcopy(mult)
 
         # Set elements. These are what is actually used for the multiplication
-        if self.inside_operator is None:
-            self._elements = elements
+        if self.inner_operator is None:
+            self.vector = vector
         else:
-            self._elements = self.inside_operator * elements
+            self.vector = self.inner_operator * vector
 
         # Store shape
-        N = shape(self._elements)
+        N = shape(self.vector)
 
         # Calculate condition number
-        if min(abs(self._elements)) == 0:
+        if min(abs(self.vector)) == 0:
             condition_number = np.inf
         else:
-            condition_number = max(abs(self._elements)) / min(abs(self._elements))
+            condition_number = max(abs(self.vector)) / min(abs(self.vector))
 
-        super(self.__class__, self).__init__((N, N), dtype, backend, cost=prod(N),
+        super().__init__((N, N), dtype, backend, cost=prod(N),
                                              forward=self._forward, adjoint=self._adjoint,
                                              inverse=self._inverse,
                                              repr_latex=self._latex,
                                              inverse_regularizer=inverse_regularizer,
                                              label=label,
                                              condition_number=condition_number,
-                                             set_arguments_function=self._setArguments,
-                                             get_arguments_function=self._getArguments)
+                                             set_arguments_function=self._set_argument,
+                                             get_arguments_function=self._get_argument)
 
     def _forward(self, x, y):
-        y[:] = x[:] * self._elements
+        y[:] = x[:] * self.vector
 
     def _adjoint(self, x, y):
-        y[:] = reshape(conj(self._elements) * reshape(x, self.N), shape(y))
+        y[:] = reshape(conj(self.vector) * reshape(x, self.N), shape(y))
 
     def _inverse(self, x, y):
-        inv_reg = super(self.__class__, self).inverse_regularizer
-        y[:] = reshape(conj(self._elements) / (yp.abs(self._elements) ** 2 + inv_reg) * reshape(x, self.N), shape(y))
+        inv_reg = super().inverse_regularizer
+        y[:] = reshape(conj(self.vector) / (yp.abs(self.vector) ** 2 + inv_reg) * reshape(x, self.N), shape(y))
 
-    def _setArguments(self, arguments):
-        if 'elements' in arguments:
-            elements = arguments['elements']
+    def _set_argument(self, argument):
 
-            # Check datatype
-            assert getDatatype(elements) == self.dtype, "Argument of wrong datatype (should be %d)" % self.dtype
+        # Check datatype
+        assert getDatatype(argument) == self.dtype, "Argument of wrong datatype (should be %d)" % self.dtype
 
-            # Check size
-            if self.inside_operator is None:
-                assert size(elements) == size(self._elements), "Argument of wrong shape (should be %d)" % size(self._elements)
-            else:
-                assert prod(size(elements)) == prod(self.inside_operator.N), "Argument of wrong shape (was %s, should be %s)" % (str(shape(elements)), str(self.inside_operator.N))
+        # Check size
+        if self.inner_operator is None:
+            assert size(argument) == size(self.vector), "Argument of wrong shape (should be %d)" % size(self.vector)
+        else:
+            assert prod(size(argument)) == prod(self.inner_operator.N), "Argument of wrong shape (was %s, should be %s)" % (str(shape(argument)), str(self.inner_operator.N))
 
-            # Assign forward operator and elements
-            if self.inside_operator is None:
-                self._elements = elements
-            else:
-                self._elements = self.inside_operator * dcopy(elements)
+        # Assign forward operator and argument
+        if self.inner_operator is None:
+            self.vector = argument
+        else:
+            self.vector = self.inner_operator * dcopy(argument)
 
-    def _getArguments(self):
-        return {'elements': self._elements}
+    def _get_argument(self):
+        return self.vector
 
     def _latex(self, latex_input=None):
-        if self.inside_operator is None:
+        if self.inner_operator is None:
             repr_latex = 'diag(\\vec{' + self.label + '})'
         else:
-            repr_latex = 'diag(' + self.inside_operator.repr_latex(self.label) + ')'
+            repr_latex = 'diag(' + self.inner_operator.repr_latex(self.label) + ')'
 
         if latex_input:
             repr_latex += ('\\times ' + latex_input)
@@ -1650,7 +1546,7 @@ class Crop(Operator):
             self._roi = yp.Roi(start=crop_start, shape=M, input_shape=N)
 
         # Store parameters
-        self._pad_value = pad_value
+        self.pad_value = pad_value
         self.label = label
         self._out_of_bounds_placeholder = out_of_bounds_placeholder
         self.M, self.N = tuple(self._roi.shape), tuple(self._roi.input_shape)
@@ -1670,10 +1566,8 @@ class Crop(Operator):
             condition_number = 1
 
         # Instantiate metaclass
-        super(self.__class__, self).__init__((self.M, self.N), dtype, backend,
+        super().__init__((self.M, self.N), dtype, backend,
                                              condition_number=condition_number,
-                                             set_arguments_function=self._setArguments,
-                                             get_arguments_function=self._getArguments,
                                              repr_latex=self._latex, label=label, cost=prod(M),
                                              forward=self._forward, adjoint=self._adjoint)
 
@@ -1682,7 +1576,7 @@ class Crop(Operator):
                  out_of_bounds_placeholder=self._out_of_bounds_placeholder)
 
     def _adjoint(self, x, y):
-        pad_roi(reshape(x, self.M), self._roi, pad_value=self._pad_value, y=y)
+        pad_roi(reshape(x, self.M), self._roi, pad_value=self.pad_value, y=y)
 
     def _latex(self, latex_input=None):
         repr_latex = self.label
@@ -1694,26 +1588,18 @@ class Crop(Operator):
         else:
             return repr_latex
 
-    def _setArguments(self, arguments):
-        """Set operator arguments which can be set."""
-        # Check for pad_value
-        if 'pad_value' in arguments:
-            self._pad_value = arguments['pad_value']
+    @property
+    def roi(self):
+        return self._roi
 
-        # Check for crop_start
-        if 'roi' in arguments:
+    @roi.setter
+    def roi(self, new_roi):
 
-            # Ensure ROI has the correct size
-            assert all([sh == roi_sh for (sh, roi_sh) in zip(self.M, arguments['roi'].shape)])
+        # Ensure ROI has the correct size
+        assert all([sh == roi_sh for (sh, roi_sh) in zip(self.M, new_roi.shape)])
 
-            # Set ROI
-            self._roi = arguments['roi']
-
-    def _getArguments(self):
-        """Get the operator arguments which can be set."""
-        return {'pad_value': self._pad_value,
-                'roi': self._roi}
-
+        # Set ROI
+        self._roi = new_roi
 
 class Flip(Operator):
     """Flip linear operator.
@@ -1732,7 +1618,7 @@ class Flip(Operator):
         self.N = N
         self.axis = axis
 
-        super(self.__class__, self).__init__((N, N), dtype, backend, label=label,
+        super().__init__((N, N), dtype, backend, label=label,
                                              forward=self._forward, adjoint=self._adjoint)
 
     def _forward(self, x, y):
@@ -1759,7 +1645,7 @@ class Exponential(Operator):
 
         # Generate Gradient operator
 
-        super(self.__class__, self).__init__((N, N), dtype, backend, label=label,
+        super().__init__((N, N), dtype, backend, label=label,
                                              repr_latex=self._latex,
                                              forward=self._forward,
                                              gradient=self._gradient)
@@ -1767,12 +1653,12 @@ class Exponential(Operator):
     def _forward(self, x, y):
         y[:] = reshape(exp(x), shape(y))
 
-    def _gradient(self, x=None, inside_operator=None):
+    def _gradient(self, x=None, inner_operator=None):
         assert x is not None, "Exponential operator requires x input"
-        if inside_operator is None:
+        if inner_operator is None:
             G = Diagonalize(conj(self.forward(x)), dtype=self.dtype, shallow=True)
         else:
-            G = Diagonalize(conj(self.forward(inside_operator * x)), dtype=self.dtype, shallow=True)
+            G = Diagonalize(conj(self.forward(inner_operator * x)), dtype=self.dtype, shallow=True)
         G.label = self.repr_latex('\\vec{x}')
 
         # Update Label
@@ -1801,7 +1687,7 @@ class Intensity(Operator):
         backend = backend if backend is not None else config.default_backend
         dtype = dtype if dtype is not None else config.default_dtype
 
-        super(self.__class__, self).__init__((N, N), dtype, backend,
+        super().__init__((N, N), dtype, backend,
                                              repr_latex=self._latex, label=label,
                                              forward=self._forward, gradient=self._gradient)
 
@@ -1814,15 +1700,15 @@ class Intensity(Operator):
     def _forward(self, x, y):
         y[:] = conj(x) * x
 
-    def _gradient(self, x=None, inside_operator=None):
-        if inside_operator is None:
+    def _gradient(self, x=None, inner_operator=None):
+        if inner_operator is None:
             return _GradientOperator(Diagonalize(x, dtype=self.dtype, shallow=True))
         else:
-            if callable(inside_operator.repr_latex):
-                repr = inside_operator.repr_latex(' \\vec{x}')
+            if callable(inner_operator.repr_latex):
+                repr = inner_operator.repr_latex(' \\vec{x}')
             else:
-                repr = inside_operator.repr_latex + ' \\times \\vec{x}'
-            return _GradientOperator(Diagonalize(inside_operator * x, dtype=self.dtype, label=repr, shallow=True))
+                repr = inner_operator.repr_latex + ' \\times \\vec{x}'
+            return _GradientOperator(Diagonalize(inner_operator * x, dtype=self.dtype, label=repr, shallow=True))
 
 
 class Power(Operator):
@@ -1841,7 +1727,7 @@ class Power(Operator):
 
         self.power = power
 
-        super(self.__class__, self).__init__((N, N), dtype, backend,
+        super().__init__((N, N), dtype, backend,
                                              label=label, repr_latex=self._latex,
                                              forward=self._forward, gradient=self._gradient)
 
@@ -1856,7 +1742,7 @@ class Power(Operator):
         y = reshape(y, self.N)
         y[:] = x ** self.power
 
-    def _gradient(self, x=None, inside_operator=None):
+    def _gradient(self, x=None, inner_operator=None):
         return _GradientOperator((self.power * Power(self.N, self.power - 1., dtype=self.dtype)))
 
 
@@ -1892,7 +1778,7 @@ class Sum(Operator):
             self.scale_adjoint *= 1 / N[axis]
 
 
-        super(self.__class__, self).__init__((M, N), dtype, backend, label=label, cost=prod(N),
+        super().__init__((M, N), dtype, backend, label=label, cost=prod(N),
                                              repr_latex=self._latex, forward=self._forward, adjoint=self._adjoint)
 
     def _latex(self, latex_input=None):
@@ -1921,7 +1807,7 @@ class L2Norm(Operator):
         backend = backend if backend is not None else config.default_backend
         dtype = dtype if dtype is not None else config.default_dtype
 
-        super(self.__class__, self).__init__(((1, 1), N), dtype, backend, smooth=True, label=label,
+        super().__init__(((1, 1), N), dtype, backend, smooth=True, label=label,
                                              forward=self._forward, gradient=self._gradient, cost=prod(N) ** 2,
                                              proximal=self._proximal, convex=True, repr_latex=self._latex)
 
@@ -1934,9 +1820,9 @@ class L2Norm(Operator):
     def _forward(self, x, y):
         y[:] = 0.5 * real(norm(x) ** 2)
 
-    def _gradient(self, x=None, inside_operator=None):
-        if inside_operator is not None:
-            return _GradientOperator(inside_operator)
+    def _gradient(self, x=None, inner_operator=None):
+        if inner_operator is not None:
+            return _GradientOperator(inner_operator)
         else:
             return _GradientOperator(Identity(self.N, self.dtype, self.backend))
 
@@ -1958,7 +1844,7 @@ class L1Norm(Operator):
         backend = backend if backend is not None else config.default_backend
         dtype = dtype if dtype is not None else config.default_dtype
 
-        super(self.__class__, self).__init__(((1, 1), N), dtype, backend, smooth=False, label=label,
+        super().__init__(((1, 1), N), dtype, backend, smooth=False, label=label,
                                              forward=self._forward, proximal=self._proximal,
                                              convex=True,  repr_latex=self._latex)
 
@@ -1993,7 +1879,7 @@ class PhaseRamp(Operator):
         dtype_np = getNativeDatatype(dtype, 'numpy')
         self._phase_ramp_coordinates = [changeBackend(coords.astype(dtype_np), backend) for coords in _phase_ramp_coordinates]
 
-        super(self.__class__, self).__init__((M, (len(axes), 1)), dtype, backend, smooth=True, label=label,
+        super().__init__((M, (len(axes), 1)), dtype, backend, smooth=True, label=label,
                                              forward=self._forward, gradient=self._gradient,
                                              convex=False,  repr_latex=self._latex)
 
@@ -2007,12 +1893,12 @@ class PhaseRamp(Operator):
         inner = builtins.sum([coords * scalar(xi) for (coords, xi) in zip(self._phase_ramp_coordinates, x)])
         y[:] = cos(inner) + 1j * sin(inner)
 
-    def _gradient(self, x=None, inside_operator=None):
+    def _gradient(self, x=None, inner_operator=None):
         from .stack import Vstack
-        if inside_operator is None:
+        if inner_operator is None:
             expx = self.forward(x)
         else:
-            expx = self.forward(inside_operator * x)
+            expx = self.forward(inner_operator * x)
 
         S = Sum(self.M, self.dtype, self.backend)
         D_list = [S * Diagonalize(conj(1j * coords) * conj(expx), shallow=True) for coords in self._phase_ramp_coordinates]
@@ -2051,16 +1937,14 @@ class Shift(Operator):
             # Construct subpixel shift operator
             H = PhaseRamp(N, dtype, backend, center=False)
             F = FourierTransform(N, dtype, backend, center=False, pad=True)
-            D = Diagonalize(asarray(shift), dtype, backend, inside_operator=H, label=label.lower())
+            D = Diagonalize(asarray(shift), dtype, backend, inner_operator=H, label=label.lower())
             self.subpixel_shift_op = F.H * D * F
 
         # Instantiate Metaclass
-        super(self.__class__, self).__init__((N, N), dtype, backend, label=label,
+        super().__init__((N, N), dtype, backend, label=label,
                                              condition_number=1.,
                                              forward=self._forward,
-                                             adjoint=self._adjoint,
-                                             get_arguments_function=self._getArguments,
-                                             set_arguments_function=self._setArguments)
+                                             adjoint=self._adjoint)
 
     def _forward(self, x, y):
         if not self.is_subpixel_shift:
@@ -2078,20 +1962,13 @@ class Shift(Operator):
         else:
             self.subpixel_shift_op._adjoint(x, y)
 
-    def _getArguments(self):
-        return({'shift': self.shift})
-
-    def _setArguments(self, new_arguments):
-        if 'shift' in new_arguments:
-            self.shift = tuple(np.asarray(new_arguments['shift']))
-
 
 class Convolution(Operator):
     """Convolution operator."""
 
     def __init__(self, kernel, mode='circular', dtype=None, backend=None, label='C',
                  pad_value=0, axis=None, pad_convolution=True, pad_fft=True,
-                 inverse_regularizer=None, inside_operator=None, force_full=False,
+                 inverse_regularizer=None, inner_operator=None, force_full=False,
                  invalid_support_value=1, fft_backend=None):
 
         # Configure backend and datatype
@@ -2107,11 +1984,11 @@ class Convolution(Operator):
         kernel = yp.cast(kernel, self.dtype, self.backend)
 
         # Store inside operator
-        self.inside_operator = inside_operator
+        self.inner_operator = inner_operator
 
         # Apply inside operator if specified
-        if self.inside_operator:
-            self._kernel = self.inside_operator * kernel
+        if self.inner_operator:
+            self._kernel = self.inner_operator * kernel
         else:
             self._kernel = dcopy(kernel)
 
@@ -2140,15 +2017,15 @@ class Convolution(Operator):
             condition_number = np.inf
 
         # Instantiate metaclass
-        super(self.__class__, self).__init__((self.M, self.N),
+        super().__init__((self.M, self.N),
                                              self.dtype,
                                              self.backend,
                                              smooth=True,
                                              forward=self._forward,
                                              adjoint=self._adjoint,
                                              inverse=self._inverse,
-                                             set_arguments_function=self._setArguments,
-                                             get_arguments_function=self._getArguments,
+                                             set_arguments_function=self._set_argument,
+                                             get_arguments_function=self._get_argument,
                                              condition_number=condition_number,
                                              inverse_regularizer=inverse_regularizer,
                                              label=label)
@@ -2160,43 +2037,39 @@ class Convolution(Operator):
         self.conv_adj_func(x, y=y)
 
     def _inverse(self, x, y):
-        self.conv_inv_func(x, y=y, regularization=super(self.__class__, self).inverse_regularizer)
+        self.conv_inv_func(x, y=y, regularization=super().inverse_regularizer)
 
-    def _setArguments(self, arguments):
-        if 'kernel' in arguments:
-            kernel = arguments['kernel']
+    def _set_argument(self, kernel):
 
-            # Check datatype
-            assert getDatatype(kernel) == self.dtype, "Argument of wrong datatype (should be %d)" % self.dtype
+        # Check datatype
+        assert getDatatype(kernel) == self.dtype, "Argument of wrong datatype (should be %d)" % self.dtype
 
-            # Check size
-            if self.inside_operator is None:
-                assert size(kernel) == size(self._kernel), "Argument of wrong shape (should be %d)" % size(self._kernel)
-            else:
-                assert prod(size(kernel)) == prod(self.inside_operator.N), "Argument of wrong shape (was %s, should be %s)" % (str(shape(kernel)), str(self.inside_operator.N))
+        # Check size
+        if self.inner_operator is None:
+            assert size(kernel) == size(self._kernel), "Argument of wrong shape (should be %d)" % size(self._kernel)
+        else:
+            assert prod(size(kernel)) == prod(self.inner_operator.N), "Argument of wrong shape (was %s, should be %s)" % (str(shape(kernel)), str(self.inner_operator.N))
 
-            # Apply inside operator if specified
-            if self.inside_operator:
-                self._kernel = self.inside_operator * kernel
-            else:
-                self._kernel = dcopy(kernel)
+        # Apply inside operator if specified
+        if self.inner_operator:
+            self._kernel = self.inner_operator * kernel
+        else:
+            self._kernel = dcopy(kernel)
 
-            # Generate new convolution functions
-            self.conv_func, self.conv_adj_func, self.conv_inv_func, self.M = yp.fft.conv_functions(self.N,
-                                                                                                   self._kernel,
-                                                                                                   mode=self.mode,
-                                                                                                   axis=self.axis,
-                                                                                                   pad_value=self.pad_value,
-                                                                                                   pad_convolution=self.pad_convolution,
-                                                                                                   fourier_input=False,
-                                                                                                   pad_fft=self.pad_fft,
-                                                                                                   force_full=self.force_full,
-                                                                                                   fft_backend=self.fft_backend)
+        # Generate new convolution functions
+        self.conv_func, self.conv_adj_func, self.conv_inv_func, self.M = yp.fft.conv_functions(self.N,
+                                                                                                self._kernel,
+                                                                                                mode=self.mode,
+                                                                                                axis=self.axis,
+                                                                                                pad_value=self.pad_value,
+                                                                                                pad_convolution=self.pad_convolution,
+                                                                                                fourier_input=False,
+                                                                                                pad_fft=self.pad_fft,
+                                                                                                force_full=self.force_full,
+                                                                                                fft_backend=self.fft_backend)
 
-    def _getArguments(self):
-        return {'kernel': self._kernel}
-
-
+    def _get_argument(self):
+        return self._kernel
 
 class Segmentation(Operator):
     """Image Segmentation Operator."""
@@ -2208,24 +2081,24 @@ class Segmentation(Operator):
         self.dtype = dtype if dtype is not None else yp.config.default_dtype
 
         # Store alpha blend size
-        self._alpha_blend_size = alpha_blend_size
+        self.alpha_blend_size = alpha_blend_size
 
         # Determine input size from roi list
         N = builtins.sum(roi_list).shape if N is None else N
 
         # Parse roi list if necessary
-        self._roi_list = []
+        self.roi_list = []
         for roi in roi_list:
             if 'Roi' in str(type(roi)):
-                self._roi_list.append(roi)
+                self.roi_list.append(roi)
             else:
                 raise ValueError('Expected ROI object for roi_list element (got %s)' % str(roi))
 
         # Determine the size of the output
-        M = [max([roi.shape[0] for roi in self._roi_list]), max([roi.shape[1] for roi in self._roi_list])]
-        for roi in self._roi_list[1:]:
+        M = [max([roi.shape[0] for roi in self.roi_list]), max([roi.shape[1] for roi in self.roi_list])]
+        for roi in self.roi_list[1:]:
             # Check that all Rois have the same width
-            # assert roi.shape[1] == self._roi_list[0].shape[1], "All Roi outputs should have the same width!"
+            # assert roi.shape[1] == self.roi_list[0].shape[1], "All Roi outputs should have the same width!"
 
             # Increment size in first dimension
             M[0] += roi.shape[0]
@@ -2238,19 +2111,17 @@ class Segmentation(Operator):
         self._updateMask()
 
         # Instantiate the metalass
-        super(self.__class__, self).__init__((self.M, self.N), self.dtype, self.backend,
+        super().__init__((self.M, self.N), self.dtype, self.backend,
                                              smooth=True,
                                              forward=self._forward,
                                              adjoint=self._adjoint,
                                              inverse=self._inverse,
                                              repr_latex=self._latex,
-                                             get_arguments_function=self._getArguments,
-                                             set_arguments_function=self._setArguments,
                                              label=label)
 
     def _forward(self, x, y):
         yp.fill(y, 0)
-        for (index, roi) in enumerate(self._roi_list):
+        for (index, roi) in enumerate(self.roi_list):
             slice_out = (slice(index * self.N[0], (index + 1) * self.N[0]),
                          slice(0, self.M[1]))
             y[slice_out] = crop_roi(x, roi, out_of_bounds_placeholder=0)
@@ -2259,11 +2130,11 @@ class Segmentation(Operator):
         yp.fill(y, 0)
 
         # Loop over ROIs and update measurement
-        for index, roi in enumerate(self._roi_list):
+        for index, roi in enumerate(self.roi_list):
             # roi is where it's going
 
             # This ROI corresponds to where
-            roi_data = yp.Roi(start=(index * self._roi_list[0].shape[0], 0), shape=roi.shape)
+            roi_data = yp.Roi(start=(index * self.roi_list[0].shape[0], 0), shape=roi.shape)
 
             # Crop x to this region and apply alpha blending mask
             x_single = x[roi_data.slice]
@@ -2287,7 +2158,7 @@ class Segmentation(Operator):
         yp.fill(y, 0)
 
         # Loop over ROIs and update measurement
-        for index, roi in enumerate(self._roi_list):
+        for index, roi in enumerate(self.roi_list):
 
             # ROI for data location
             roi_data = yp.Roi(start=(index * roi.shape[0], 0), shape=roi.shape)
@@ -2311,39 +2182,17 @@ class Segmentation(Operator):
         # Normalize by inverse normalization (normalize by eigenvalues)
         y[:] /= self._coverage_mask
 
-    def _getArguments(self):
-        args = {'alpha_blend_size': self._alpha_blend_size,
-                'roi_list': self._roi_list}
-        return args
-
-    def _setArguments(self, new_arguments):
-        if 'alpha_blend_size' in new_arguments:
-            self._alpha_blend_size = int(new_arguments['alpha_blend_size'])
-        if 'roi_list' in new_arguments:
-            assert len(new_arguments['roi_list']) == len(self._roi_list), 'Roi list has wrong length!'
-            roi_list = new_arguments['roi_list']
-
-            for index, roi in enumerate(roi_list):
-                if 'Roi' in str(type(roi)):
-                    # If we've passed in Roi objects, just set them directly here
-                    self._roi_list[index] = roi
-                else:
-                    raise ValueError('Must pass Roi Objects!')
-
-            # Update mask
-            self._updateMask()
-
     def _latex(self, latex_input=None):
         latex_ret = self.label + '_{\\begin{bmatrix}'
-        if len(self._roi_list) < 5:
-            for index, roi in enumerate(self._roi_list):
+        if len(self.roi_list) < 5:
+            for index, roi in enumerate(self.roi_list):
                 repr_latex = '{%s}' % str([(start, end) for (start, end) in zip(roi.start, roi.end)])
 
                 if index is not 0:
                     latex_ret += ' \\cr '
                 latex_ret += (repr_latex)
         else:
-            for index, roi in enumerate(self._roi_list[:2]):
+            for index, roi in enumerate(self.roi_list[:2]):
                 repr_latex = '{%s}' % str([(start, end) for (start, end) in zip(roi.start, roi.end)])
 
                 if index is not 0:
@@ -2352,7 +2201,7 @@ class Segmentation(Operator):
 
             latex_ret += '\\cr \\vdots \\cr '
 
-            for index, roi in enumerate(self._roi_list[-2:]):
+            for index, roi in enumerate(self.roi_list[-2:]):
                 repr_latex = '{%s}' % str([(start, end) for (start, end) in zip(roi.start, roi.end)])
 
                 if index is not 0:
@@ -2372,18 +2221,18 @@ class Segmentation(Operator):
         self._coverage_mask = yp.zeros(self.N, self.dtype, self.backend)
 
         # Count the number of times each position is covered
-        for roi in self._roi_list:
+        for roi in self.roi_list:
             self._coverage_mask[roi.slice] += 1.0
 
         # Get rid of zeros in both alpha blend mask and _coverage_mask
         self._coverage_mask[abs(self._coverage_mask) < 1e-2] = 1.0
 
         # Generate alpha blending parameters
-        if self._alpha_blend_size > 0:
+        if self.alpha_blend_size > 0:
 
             # Generate windows
-            alpha = self._alpha_blend_size / np.max(self._roi_list[0].shape)
-            windows = [sp.signal.windows.tukey(s, alpha=alpha) for s in self._roi_list[0].shape]
+            alpha = self.alpha_blend_size / np.max(self.roi_list[0].shape)
+            windows = [sp.signal.windows.tukey(s, alpha=alpha) for s in self.roi_list[0].shape]
 
             self._alpha_blend_mask = yp.cast(np.outer(windows[0], windows[1]), self.dtype, self.backend)
             self._alpha_blend_mask -= yp.min(self._alpha_blend_mask)
@@ -2392,7 +2241,7 @@ class Segmentation(Operator):
 
             # Generate sum
             self._alpha_blend_mask_sum = yp.zeros_like(self._coverage_mask)
-            for roi in self._roi_list:
+            for roi in self.roi_list:
                 roi_valid = roi.valid - roi.start
                 self._alpha_blend_mask_sum[roi.valid.slice] += self._alpha_blend_mask[roi_valid.slice]
 

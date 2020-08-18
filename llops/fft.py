@@ -272,7 +272,6 @@ def fftfuncs(N, axes=None, center=True, normalize=True, dtype=default_dtype,
         # Unlike numpy / scipy / fftw, arrayfire has seperate functions
         # based on dimensionality. Thus, need to assign this function first.
         if len(axes) != len(N) and any([ax != n for (ax, n) in zip(axes, range(len(N)))]):
-
             # Determine necessary re-ordered dimensions
             dims = list(range((len(N))))
             for axis in axes:
@@ -305,9 +304,9 @@ def fftfuncs(N, axes=None, center=True, normalize=True, dtype=default_dtype,
                 return_y = False
 
             if center:
-                y[:] = fftshift(astype(af_fft(fftshift(x), scale=1/scale), output_dtype))
+                y[:] = fftshift(astype(af_fft(fftshift(x)), output_dtype))
             else:
-                y[:] = af_fft(x, scale=1/scale)
+                y[:] = af_fft(x)
 
             if normalize:
                 y[:] = y / scale
@@ -322,11 +321,11 @@ def fftfuncs(N, axes=None, center=True, normalize=True, dtype=default_dtype,
                 y = alloc(shape(x), output_dtype, getBackend(x))
             else:
                 return_y = False
-
+        
             if center:
-                y[:] = ifftshift(astype(af_ifft(ifftshift(x), scale=1/scale), output_dtype))
+                y[:] = ifftshift(astype(af_ifft(ifftshift(x)), output_dtype))
             else:
-                y[:] = af_ifft(x, scale=1/scale)
+                y[:] = af_ifft(x, scale=scale)
 
             if normalize:
                 y[:] = y * scale
