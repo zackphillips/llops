@@ -2213,7 +2213,26 @@ def dcopy(x):
 
 
 def copy(x):
+    """Convenience function for dcopy."""
     return dcopy(x)
+
+def shallow_copy(x):
+    """Returns a shallow copy of an array.
+       This is really a placeholder for a future backend 
+       which may not support shallow copy by [:]"""
+    return x[:]
+
+def pointer(x):
+    """Return an integer pointer to an array in memory."""
+    
+    # Operate based on backend
+    backend = getBackend(x)
+    if backend == 'numpy':
+        return x.__array_interface__['data'][0]
+    elif backend == 'arrayfire':
+        return x.device_ptr()
+    else:
+        raise NotImplementedError('Backend %s is not implemented!' % backend)
 
 
 def std(x):

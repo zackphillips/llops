@@ -56,7 +56,6 @@ class Hstack(Operator):
         # Pre-compute map objects for forward and inverse operators
         M = self.m
         N = [0, self.n[-1]] # This variable is the horizontally-stacked M, corresponding to the indicies
-        set_argument_function_dict = {}
 
         # Check array parameters and populate N
         for i in range(self.stack_op_count):
@@ -78,8 +77,6 @@ class Hstack(Operator):
                                              smooth=smooth, forward=self._forward,
                                              gradient=self._gradient,
                                              adjoint=adjoint,
-                                             # get_arguments_function=self._getArguments,
-                                             # set_arguments_function=self._setArguments,
                                              stack_operators=operators,
                                              label=label)
 
@@ -317,7 +314,7 @@ class Vstack(Operator):
     def _getArguments(self):
         arguments = []
         for stack_operator in self.stack_operators:
-            arguments.append(stack_operator.arguments)
+            arguments.append(stack_operator.get_argument())
         return arguments
 
     def _setArguments(self, new_arguments):

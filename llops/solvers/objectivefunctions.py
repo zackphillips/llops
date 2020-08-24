@@ -3,23 +3,23 @@ from llops import shape, getDatatype, getBackend, scalar, config, cast, Ft, iFt,
 from llops.operators import L2Norm, Vstack, PhaseRamp, Diagonalize, FourierTransform, Operator
 
 
-class ObjectiveFunction(Operator):
+# class ObjectiveFunction(Operator):
 
-    def __init__(self, operator, mode='sequential'):
-        self.operator = operator
+#     def __init__(self, operator, mode='sequential'):
+#         self.operator = operator
 
-        # Instantiate Metaclass
-        super(self.__class__, self).__init__(self.operator.shape, self.operator.dtype, self.operator.backend,
-                                             forward=self._forward, adjoint=self._adjoint, inverse=self._inverse)
+#         # Instantiate Metaclass
+#         super(self.__class__, self).__init__(self.operator.shape, self.operator.dtype, self.operator.backend,
+#                                              forward=self._forward, adjoint=self._adjoint, inverse=self._inverse)
 
-    def _forward(self, x, y=None):
-        self.operator._forward(x, y)
+#     def _forward(self, x, y=None):
+#         self.operator._forward(x, y)
         
-    def _adjoint(self, x, y=None):
+#     def _adjoint(self, x, y=None):
 
-    def _gradient(self, x, y=None):
+#     def _gradient(self, x, y=None):
 
-    def _inverse(self, x, y=None):
+#     def _inverse(self, x, y=None):
 
 
 def L2(A, y, reg=None):
