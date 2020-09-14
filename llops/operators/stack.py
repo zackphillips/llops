@@ -12,6 +12,11 @@ from operator import mul
 from functools import reduce
 import builtins
 
+# Parallel execution
+import multiprocessing
+from multiprocessing.dummy import Pool as ThreadPool
+thread_count_default = multiprocessing.cpu_count()
+
 __all__ = ['Hstack', 'Vstack', 'Dstack', 'VecStack', 'compressStack', 'expandStack', 'VecSplit']
 
 # Flag to use parallel processing of stacks, where applicable
@@ -29,22 +34,28 @@ class Hstack(Operator):
     label :
     """
 
-    def __init__(self, operators, normalize=False, label=None):
-        self.stack_op_count = len(operators)
+    def __init__(self, operator_list, parallelize=True, thread_count=None,
+                 normalize=False, label=None):
+
+        self.stack_op_count = len(operator_list)
         self.normalize = normalize
         assert(self.stack_op_count > 0)
 
         # Get datatype and backend
-        dtype = operators[0].dtype
-        backend = operators[0].backend
+        dtype = operator_list[0].dtype
+        backend = operator_list[0].backend
 
         # Store the individual operator input and output sizes
-        self.m = operators[0].M
-        self.n = operators[0].N
+        self.m = operator_list[0].M
+        self.n = operator_list[0].N
+
+        # Store parallelization state
+        self.parallelize = parallelize
+        self.thread_count = thread_count if thread_count is not None else thread_count_default
 
         # Check linearity and smoothness
-        linear = all([op.linear for op in operators])
-        smooth = all([op.smooth for op in operators])
+        linear = all([op.linear for op in operator_list])
+        smooth = all([op.smooth for op in operator_list])
 
         # Assign label
         if label is None:
@@ -59,26 +70,24 @@ class Hstack(Operator):
 
         # Check array parameters and populate N
         for i in range(self.stack_op_count):
-            assert(operators[i].M == self.m)
-            assert(operators[i].N == self.n)
-            assert(operators[i].dtype == dtype)
-            assert(operators[i].backend == backend)
-            linear = linear and operators[i].linear
-            self.idx[i + 1] = self.idx[i] + operators[i].N[0]
-            N[0] += operators[i].N[0]
+            assert(operator_list[i].M == self.m)
+            assert(operator_list[i].N == self.n)
+            assert(operator_list[i].dtype == dtype)
+            assert(operator_list[i].backend == backend)
+            linear = linear and operator_list[i].linear
+            self.idx[i + 1] = self.idx[i] + operator_list[i].N[0]
+            N[0] += operator_list[i].N[0]
 
-        # Define adjoint if all operators are linear
-        if linear:
-            adjoint = self._adjoint
-        else:
-            adjoint = None
-
-        super().__init__((M, N), dtype, backend, repr_latex=self._latex,
-                                             smooth=smooth, forward=self._forward,
-                                             gradient=self._gradient,
-                                             adjoint=adjoint,
-                                             stack_operators=operators,
-                                             label=label)
+        # Instantiate metaclass
+        super().__init__((M, N), 
+                         dtype, 
+                         backend, 
+                         repr_latex=self._latex,
+                         smooth=smooth, forward=self._forward_func,
+                         gradient=self._gradient_func,
+                         adjoint=self.adjoint_func if linear else None,
+                         stack_operators=operator_list,
+                         label=label)
 
     def _latex(self, latex_input=None):
         latex_ret = '\\begin{bmatrix}'
@@ -98,21 +107,38 @@ class Hstack(Operator):
 
         return latex_ret
 
-    def _forward(self, x, y, m=False):
-        # Set output to zero
-        # y[:] = 0
+    def _forward_func(self, x, y, m=False):
+
+        # Create iterator
+        iterator = lambda i: reshape(self.stack_operators[i] * reshape(x[:], self.N)[self.idx[i]:self.idx[i + 1], :], shape(y))
 
         # Use the map command to expose parallel nature of this problem
-        if m:
-            iterator = lambda i: reshape(self.stack_operators[i] * reshape(x[:], self.N)[self.idx[i]:self.idx[i + 1], :], shape(y))
-            y[:] = sum(map(iterator, range(self.stack_op_count)))
+        if self.parallelize:
+
+            # Make the Pool of workers
+            pool = ThreadPool(self.thread_count)
+
+            # Run parallal map
+            result_parallel = pool.map(iterator, range(self.stack_op_count))
+
+            # Unpack result
+            y[:] = sum(result_parallel)
+
+            # Close and join workers
+            pool.close()
+            pool.join()
+
         else:
-            y[:] = sum([reshape(self.stack_operators[i] * reshape(x[:], self.N)[self.idx[i]:self.idx[i + 1], :], shape(y)) for i in range(self.stack_op_count)])
+            # Run serial map
+            result_serial = map(iterator, range(self.stack_op_count))
+
+            # Unpack result
+            y[:] = sum(result_serial)
 
         if self.normalize:
             y[:] /= self.stack_op_count
 
-    def _gradient(self, x=None, inner_operator=None):
+    def _gradient_func(self, x=None, inner_operator=None):
         op_list = []
 
         # Pre-compute O * x if necessary
@@ -125,34 +151,12 @@ class Hstack(Operator):
 
         return _GradientOperator(Vstack(op_list))
 
-    def _adjoint(self, x, y):
-        # Parallel examples:
-        # https://pythonhosted.org/joblib/parallel.html
-        if False: # getBackend(x) == 'arrayfire': # Doesn't work yet due to operator indexing
-            import arrayfire as af
-            for i in af.index.ParallelRange(self.stack_op_count):
-                y[self.idx[i]:self.idx[i + 1], :] = self.stack_operators[int(i)].H * x
-        else:
-            if use_parallel:
-                for i in range(self.stack_op_count):
-                    y[self.idx[i]:self.idx[i + 1], :] = self.stack_operators[i].H * x
-            else:
-                for i in range(self.stack_op_count):
-                    y[self.idx[i]:self.idx[i + 1], :] = self.stack_operators[i].H * x
+    def adjoint_func(self, x, y):
+        for i in range(self.stack_op_count):
+            y[self.idx[i]:self.idx[i + 1], :] = self.stack_operators[i].H * x
 
         if self.normalize:
             y /= self.stack_op_count
-
-    def _getArguments(self):
-        return prod([op.arguments for op in self.stack_operators])
-
-    def _setArguments(self, new_arguments):
-        for index, argument in new_arguments:
-            op_index = np.floor(index / self.stack_op_count)
-            arg_index = index % self.stack_op_count
-            args = [None] * len(self.stack_operators[op_index].arguments)
-            args[arg_index] = argument
-            self.stack_operators[op_index] = args
 
 
 class Vstack(Operator):
@@ -166,7 +170,8 @@ class Vstack(Operator):
     label :
     """
 
-    def __init__(self, operators, normalize=False, label=None):
+    def __init__(self, operators, parallelize=True, thread_count=None,
+                 normalize=False, label=None):
         self.stack_op_count = len(operators)
         self.normalize = normalize
         assert(self.stack_op_count > 0)
@@ -178,6 +183,10 @@ class Vstack(Operator):
         # Store the individual operator input and output sizes
         self.m = operators[0].M
         self.n = operators[0].N
+
+         # Store parallelization config
+        self.parallelize = parallelize
+        self.thread_count = thread_count if thread_count is not None else thread_count_default
 
         # Check linearity and smoothness
         linear = all([op.linear for op in operators])
@@ -215,23 +224,24 @@ class Vstack(Operator):
             M[0] += operators[i].M[0]
 
         # Define adjoint if all operators are linear
-        adjoint, inverse = None, None
+        adjoint_func, inverse_func = None, None
 
         if linear:
-            adjoint = self._adjoint
+            adjoint_func = self._adjoint_func
 
         # Define inverse iff operators are non-linear and invertable
         if builtins.all([op.invertable and not op.linear for op in operators]):
-            inverse = self._inverse
+            inverse_func = self._inverse_func
 
         # Instantiate metaclass
         super().__init__((M, N), dtype, backend, repr_latex=self._latex,
-                                             forward=self._forward, adjoint=adjoint,
-                                             gradient=self._gradient, inverse=inverse,
+                                             forward=self._forward_func, 
+                                             adjoint=adjoint_func,
+                                             gradient=self._gradient_func,
+                                             inverse=inverse_func,
+                                             smooth=smooth,
                                              stack_operators=operators,
                                              condition_number=condition_number,
-                                             set_arguments_function=self._setArguments,
-                                             get_arguments_function=self._getArguments,
                                              label=label)
 
     def _latex(self, latex_input=None):
@@ -275,19 +285,39 @@ class Vstack(Operator):
             latex_ret += (' \\times ' + latex_input)
         return latex_ret
 
-    def _forward(self, x, y):
-        if False: # getBackend(x) == 'arrayfire': # doesnt work yet due to operator indexing
-            import arrayfire as af
-            for i in af.index.ParallelRange(self.stack_op_count):
-                y[self.idx[i]:self.idx[i + 1], :] = self.stack_operators[int(i)] * x
+    def _forward_func(self, x, y):
+
+        # Define iterator
+        iterator = lambda i: self.stack_operators[i] * dcopy(x)
+
+        # Use the map command to expose parallel nature of this problem
+        if self.parallelize:
+
+            # Make the Pool of workers
+            pool = ThreadPool(self.thread_count)
+
+            # Run thread across parallel map
+            result_parallel = pool.map(iterator, range(self.stack_op_count))
+
+            # Collect result
+            for i, result in enumerate(result_parallel):
+                y[self.idx[i]:self.idx[i + 1], :] = result
+
+            # Close and join workers
+            pool.close()
+            pool.join()
         else:
-            for i in range(self.stack_op_count):
-                y[self.idx[i]:self.idx[i + 1], :] = self.stack_operators[i] * x
+            # Run thread across parallel map
+            result_serial = map(iterator, range(self.stack_op_count))
+
+            # Collect result
+            for i, result in enumerate(result_serial):
+                y[self.idx[i]:self.idx[i + 1], :] = result
 
         if self.normalize:
             y /= self.stack_op_count
 
-    def _gradient(self, x=None, inner_operator=None):
+    def _gradient_func(self, x=None, inner_operator=None):
         # Generate gradient operator
         op_list = []
         for i in range(self.stack_op_count):
@@ -298,31 +328,18 @@ class Vstack(Operator):
 
         return _GradientOperator(Hstack(op_list))
 
-    def _adjoint(self, x, y):
+    def _adjoint_func(self, x, y):
         y[:] = sum([reshape(self.stack_operators[i].H * x[self.idx[i]:self.idx[i + 1], :], shape(y)) for i in range(self.stack_op_count)])
 
         if self.normalize:
             y[:] /= self.stack_op_count
 
-    def _inverse(self, x, y):
+    def _inverse_func(self, x, y):
         """Inverse (Used on y for non-linear operators)."""
         y[:] = sum([reshape(self.stack_operators[i].inv * x[self.idx[i]:self.idx[i + 1], :], shape(y)) for i in range(self.stack_op_count)])
 
         if self.normalize:
             y[:] /= self.stack_op_count
-
-    def _getArguments(self):
-        arguments = []
-        for stack_operator in self.stack_operators:
-            arguments.append(stack_operator.get_argument())
-        return arguments
-
-    def _setArguments(self, new_arguments):
-
-        assert len(new_arguments) == len(self.stack_operators)
-        for index, op in enumerate(self.stack_operators):
-            if new_arguments[index] is not None:
-                op.arguments = new_arguments[index]
 
 class Dstack(Operator):
     """Diagonal stack of operators.
@@ -331,7 +348,8 @@ class Dstack(Operator):
     operators : arrays of operators
     """
 
-    def __init__(self, operators, normalize=False, label=None):
+    def __init__(self, operators, parallelize=True, thread_count=None,
+                 normalize=False, label=None):
         self.stack_op_count = len(operators)
         self.normalize = normalize
         assert(self.stack_op_count > 0)
@@ -345,6 +363,10 @@ class Dstack(Operator):
         self.m = operators[0].M
         self.n = operators[0].N
 
+        # Store parallelization config
+        self.parallelize = parallelize
+        self.thread_count = thread_count if thread_count is not None else thread_count_default
+
         # Check linearity and smoothness
         linear = all([op.linear for op in operators])
         smooth = all([op.smooth for op in operators])
@@ -354,8 +376,7 @@ class Dstack(Operator):
             label = 'O_{' + str(self.stack_op_count) + ' \\times ' + str(self.stack_op_count) + '}'
 
         # Determine input array indexing for diagonal operators
-        self.idx_in = [0] * (self.stack_op_count + 1)
-        self.idx_out = [0] * (self.stack_op_count + 1)
+        self.idx = [0] * (self.stack_op_count + 1)
 
         # Check if operators have common bases; if so, assign this and singular values
         condition_number, invertable = None, None
@@ -382,25 +403,25 @@ class Dstack(Operator):
             assert(operators[i].dtype == dtype)
             assert(operators[i].backend == backend)
             linear = linear and operators[i].linear
-            self.idx_in[i + 1] = self.idx_in[i] + operators[i].N[0]
-            self.idx_out[i + 1] = self.idx_out[i] + operators[i].M[0]
+            self.idx[i + 1] = self.idx[i] + operators[i].N[0]
+            self.idx[i + 1] = self.idx[i] + operators[i].M[0]
             M[0] += operators[i].M[0]
             N[0] += operators[i].N[0]
 
         # Define adjoint if all operators are linear
-        adjoint, inverse = None, None
+        adjoint_func, inverse_func = None, None
         if linear:
-            adjoint = self._adjoint
+            adjoint_func = self._adjoint_func
         if invertable:
-            inverse = self._inverse
+            inverse_func = self._inverse_func
 
         # Instantiate metaclass
         super().__init__((M, N), dtype, backend, repr_latex=self._latex,
                                              smooth=smooth,
-                                             forward=self._forward,
-                                             gradient=self._gradient,
-                                             adjoint=adjoint,
-                                             inverse=inverse,
+                                             forward=self._forward_func,
+                                             gradient=self._gradient_func,
+                                             adjoint=adjoint_func,
+                                             inverse=inverse_func,
                                              stack_operators=operators,
                                              condition_number=condition_number,
                                              label=label)
@@ -455,28 +476,55 @@ class Dstack(Operator):
         return latex_ret
 
 
-    def _forward(self, x, y):
-        for i in range(self.stack_op_count):
-            y[self.idx_out[i]:self.idx_out[i + 1], :] = self.stack_operators[i] * dcopy(x[self.idx_in[i]:self.idx_in[i + 1], :])
+    def _forward_func(self, x, y):
+
+        # Define iterator
+        iterator = lambda i: self.stack_operators[i] * dcopy(x[self.idx[i]:self.idx[i + 1], :])
+
+        # Use the map command to expose parallel nature of this problem
+        if self.parallelize:
+
+            # Make the Pool of workers
+            pool = ThreadPool(self.thread_count)
+
+            # Run thread across parallel map
+            result_parallel = pool.map(iterator, range(self.stack_op_count))
+
+            # Collect result
+            for i, result in enumerate(result_parallel):
+                y[self.idx[i]:self.idx[i + 1], :] = result
+
+            # Close and join workers
+            pool.close()
+            pool.join()
+
+        else:
+
+            # Run thread across serial map
+            result_serial = map(iterator, range(self.stack_op_count))
+
+            # Collect result
+            for i, result in enumerate(result_serial):
+                y[self.idx[i]:self.idx[i + 1], :] = result
 
         if self.normalize:
             y /= self.stack_op_count
 
-    def _adjoint(self, x, y):
+    def _adjoint_func(self, x, y):
         for i in range(self.stack_op_count):
-            y[self.idx_in[i]:self.idx_in[i + 1], :] = self.stack_operators[i].H * dcopy(x[self.idx_out[i]:self.idx_out[i + 1], :])
+            y[self.idx[i]:self.idx[i + 1], :] = self.stack_operators[i].H * dcopy(x[self.idx[i]:self.idx[i + 1], :])
 
         if self.normalize:
             y /= self.stack_op_count
 
-    def _gradient(self, x=None, inner_operator=None):
+    def _gradient_func(self, x=None, inner_operator=None):
         # Generate gradient operator
         op_list = []
 
         # Loop over stack operators
         for i in range(self.stack_op_count):
             # Get subarray of input
-            _x = x[self.idx_in[i]:self.idx_in[i + 1], :]
+            _x = x[self.idx[i]:self.idx[i + 1], :]
 
             # Append gradient to list
             op_list.append(self.stack_operators[i]._gradient(inner_operator=inner_operator, x=_x))
@@ -486,26 +534,14 @@ class Dstack(Operator):
 
         return _GradientOperator(Dstack(op_list))
 
-    def _inverse(self, x, y):
+    def _inverse_func(self, x, y):
         # print(shape(y))
         for i in range(self.stack_op_count):
-            y[self.idx_in[i]:self.idx_in[i + 1], :] = self.stack_operators[i].inv * dcopy(x[self.idx_out[i]:self.idx_out[i + 1], :])
+            y[self.idx[i]:self.idx[i + 1], :] = self.stack_operators[i].inv * dcopy(x[self.idx[i]:self.idx[i + 1], :])
 
         # Normalize, if requested
         if self.normalize:
             y /= self.stack_op_count
-
-    def _getArguments(self):
-        return builtins.sum([op.arguments for op in self.stack_operators])
-
-    def _setArguments(self, new_arguments):
-        for index, argument in new_arguments:
-            op_index = np.floor(index / self.stack_op_count)
-            arg_index = index % self.stack_op_count
-            args = [None] * len(self.stack_operators[op_index].arguments)
-            args[arg_index] = argument
-            self.stack_operators[op_index] = args
-
 
 def VecStack(vector_list, axis=0):
     """ This is a helper function to stack vectors """

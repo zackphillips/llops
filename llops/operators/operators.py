@@ -18,7 +18,6 @@ from scipy.fftpack import next_fast_len
 from numpy import isscalar, prod, inf, ndarray
 import math
 import random
-import pywt
 import builtins
 
 # Llops imports
@@ -68,6 +67,13 @@ class Operator(object):
         # Store component dimensions
         self.M = shape[0] if not hasattr(shape[0], '__iter__') else tuple(shape[0])
         self.N = shape[1] if not hasattr(shape[1], '__iter__') else tuple(shape[1])
+
+        # Generate intermediate buffers
+        if set(self.M).intersection(self.N):
+            # TODO: if same size, use same variable
+            self.y_buffer = yp.alloc(self.M, self.dtype, self.backend)
+        else:
+            self.y_buffer = yp.alloc(self.M, self.dtype, self.backend)
 
         # Define whether or not a forward model is smooth; if smooth is not provided, set based on the gradient and adjoint
         if smooth is None:
@@ -257,6 +263,10 @@ class Operator(object):
         Evaluate the forward operation, or return a new composite operator if the input is another operator.
         This method is defined for ALL operators.
         """
+
+        # Store whether we should return y or not
+        return_y = y is None
+
         if is_operator(x):
             """Operator Product """
             return _ProductOperator(self, x)
@@ -270,16 +280,15 @@ class Operator(object):
             return self  # Treat as identity
 
         else:
-            # Store whether we should return y or not
-            return_y = y is None
-
-            """Dense Matrix/Vector Product """
+            # Get datatype
             if getDatatype(x) != self.dtype:
                 raise ValueError('Input data type mismatch, for {}, got {}'.format(self, getDatatype(x)))
-
+            
+            # Get backend
             if getBackend(x) != self.backend:
                 raise ValueError('Input backend mismatch, for {}, got {}'.format(self, getBackend(x)))
-
+            
+            # Get dimensions
             if size(x) != prod(self.shape[1]):
                 raise ValueError('Input size mismatch, for {}, got {}'.format(self, shape(x)))
 
@@ -289,9 +298,9 @@ class Operator(object):
 
             # Initialize output
             if y is None:
-                y = alloc(self.M, self.dtype, self.backend)
+                y = self.y_buffer * 0
             else:
-                # Check backend and dtype of provided output
+                # Check backend and dtype of provided output buffer (y)
                 if getDatatype(y) != self.dtype:
                     raise ValueError('Output dtype mismatch, for {}, got {}'.format(self, getDatatype(x)))
                 if getBackend(y) != self.backend:
@@ -876,12 +885,13 @@ def _SumOperator(A, B, subtract_str=False):
     repr_str = A.repr_str + B.repr_str
     condition_number = max([A.condition_number, B.condition_number]) if ((A.condition_number is not None) and (B.condition_number is not None)) else None
     label = A.label + ' + ' + B.label
+    adjoint_func = _adjoint_func if (A.linear and B.linear) else None
 
     return Operator((M,N),
                     dtype,
                     backend,
                     forward=_forward_func,
-                    adjoint=_adjoint_func,
+                    adjoint=adjoint_func,
                     smooth=smooth,
                     cost=cost,
                     smooth_part=smooth_part,
@@ -1342,6 +1352,7 @@ class WaveletTransform(Operator):
 
     def __init__(self, N, wavelet_type='haar', extention_mode='symmetric', level=None, use_cycle_spinning=False,
                  axes=None, dtype=None, backend=None, label=None):
+        import pywt
 
         # Configure backend and datatype
         backend = backend if backend is not None else config.default_backend
@@ -1386,6 +1397,7 @@ class WaveletTransform(Operator):
                                              adjoint=self._adjoint_func)
 
     def _forward_func(self, x, y):
+        import pywt
 
         # Reshape input if necessary
         x = reshape(x, self.N)
@@ -1408,6 +1420,8 @@ class WaveletTransform(Operator):
         y[:] = reshape(changeBackend(coeffs_2d, getBackend(y)), shape(y))
 
     def _adjoint_func(self, x, y):
+        import pywt
+
         # Change to numpy backend
         x = changeBackend(reshape(x, self.M), 'numpy')
 

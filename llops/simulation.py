@@ -16,7 +16,6 @@ import imageio
 import json
 import numpy as np
 import os
-from scipy.misc import imresize
 from skimage.transform import resize
 import llops as yp
 

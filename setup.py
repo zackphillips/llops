@@ -9,4 +9,4 @@ setup(name='llops',
       packages=find_packages(),
       py_modules=['llops'],
       package_data={'': ['*.png', '*.jpg', '*.jpeg', '*.tif', '*.tiff', '*.json']},
-      install_requires=['numpy', 'psutil', 'matplotlib', 'scipy', 'scikit-image', 'imageio', 'pillow'])
+      install_requires=['numpy', 'psutil', 'matplotlib', 'scipy', 'scikit-image', 'imageio', 'pillow', 'pywavelets'])
