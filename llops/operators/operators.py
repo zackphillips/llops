@@ -701,11 +701,8 @@ class Operator(object):
         return (hash(self) == hash(other))
 
     def __repr__(self):
-        M, N = self.shape
-        dt = 'dtype=' + str(self.dtype)
-
-        return '<{}: {}x{} {} {} operator with {}>'.format(self.label, self.M, self.N, self.repr_str,
-                                                           self.backend.upper(), dt)
+        return '<%s: %dx%d %s %s operator with dtype=%s>'.format(self.label, self.M, self.N, self.repr_str,
+                                                                 self.backend.upper(), self.dtype)
 
 def _ScaledOperator(A, a):
     """Multiplication of Operator and scalar """
@@ -1686,10 +1683,12 @@ class Exponential(Operator):
 
     def _gradient_func(self, x=None, inner_operator=None):
         assert x is not None, "Exponential operator requires x input"
+        
         if inner_operator is None:
             G = Diagonalize(conj(self.forward(x)), dtype=self.dtype)
         else:
             G = Diagonalize(conj(self.forward(inner_operator * x)), dtype=self.dtype)
+
         G.label = self.repr_latex('\\vec{x}')
 
         # Update Label
