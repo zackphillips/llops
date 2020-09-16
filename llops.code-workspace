@@ -1,13 +1,10 @@
 {
 	"folders": [
 		{
-			"path": "../.."
+			"path": "./"
 		},
 		{
-			"path": "../../../pydpc"
-		},
-		{
-			"path": "../../../comptic"
+			"path": "../comptic"
 		}
 	],
 	"settings": {
