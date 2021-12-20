@@ -1,6 +1,7 @@
-# Low-level Operators library
-***Work in Progress - most things work, but there may be bugs!***
+***Not activly maintained - use only as a reference!***
+See [jax](https://github.com/google/jax) for a similar solution (backend-agnostic numpy)
 
+# Low-level Operators library
 This library enables backend-independent computing using numpy and arrayfire.
 Partial support is also included for pytorch.
 
